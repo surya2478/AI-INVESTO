@@ -1,0 +1,28 @@
+# AI-Investo engine dependencies
+# Verified installing cleanly on Python 3.14.4 (Windows, Aug 2026).
+# Pinned to major/minor to keep pandas 3.x behaviour stable across machines.
+
+duckdb>=1.5,<2
+pandas>=3.0,<4
+numpy>=2.5,<3
+pyarrow>=25
+scipy>=1.18
+
+yfinance>=1.5,<2
+requests>=2.34
+httpx>=0.28
+curl_cffi>=0.16          # yfinance transport; NSE also needs browser-like TLS
+lxml>=6.1
+beautifulsoup4>=4.15
+
+typer>=0.27
+rich>=15
+pydantic>=2.13
+pyyaml>=6.0
+tenacity>=9.1
+python-dotenv>=1.2
+
+fastapi>=0.141
+uvicorn>=0.52
+
+pytest>=9.1

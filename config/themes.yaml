@@ -1,0 +1,411 @@
+# AI-Investo theme graph
+# ======================
+# Each theme has two legs. The GLOBAL leg is the leading indicator: large,
+# liquid, well-covered names whose moves are driven by the underlying trend.
+# The INDIA leg is the investable derivative -- and it is usually NOT the
+# obvious one. There is no Indian AI-chip company; the Indian AI trade is grid
+# capacity and data-centre plumbing.
+#
+# The propagation engine measures the historical lead-lag between the two legs
+# per theme, which is how "global fired, India hasn't yet" becomes measurable.
+#
+# TICKERS ARE UNVALIDATED until `investo universe validate` runs. That command
+# probes every symbol, drops what does not resolve, and writes an exceptions
+# report. Do not assume a symbol here is correct just because it is listed.
+#
+# Tier 1 = full weight | Tier 2 = active, longer-dated | Tier 3 = watchlist only
+
+themes:
+
+  # =====================================================================
+  - id: ai_compute
+    name: "AI & Compute"
+    tier: 1
+    status: ACTIVE
+    description: >
+      Hyperscaler capex is the driver. India has no AI silicon, so the Indian
+      leg is the physical build-out that AI demands: power delivery, cooling,
+      interconnect and electronics manufacturing.
+    global_nodes:
+      - id: ai_silicon
+        name: "AI silicon & foundry"
+        tickers: [NVDA, AMD, AVGO, TSM, MU, MRVL, ASML]
+      - id: ai_infra_hw
+        name: "Server, network & power hardware"
+        tickers: [SMCI, ANET, VRT, ETN, DELL, CRDO]
+      - id: hyperscalers
+        name: "Hyperscaler capex source"
+        tickers: [MSFT, GOOGL, AMZN, META, ORCL]
+    india_nodes:
+      - id: in_dc_power
+        name: "Data-centre power chain"
+        tickers: [CGPOWER, SIEMENS, ABB, POWERINDIA, TDPOWERSYS, VOLTAMP]
+        rationale: >
+          A data centre is a power problem before it is a compute problem.
+          Transformers, switchgear and UPS scale with rack density, and Indian
+          suppliers have order books tied to the domestic DC build.
+      - id: in_dc_cooling
+        name: "Cooling & thermal management"
+        tickers: [BLUESTARCO, VOLTAS, AMBER]
+        rationale: >
+          Liquid and precision cooling is the fastest-growing line item per MW
+          as rack densities rise. Indian HVAC names have a nascent DC segment.
+      - id: in_it_services_ai
+        name: "IT services AI revenue mix"
+        # LTM = LTIMindtree (NSE ticker changed from LTI post-Mindtree merger)
+        tickers: [TCS, INFY, HCLTECH, LTM, LTTS, TECHM, PERSISTENT]
+        rationale: >
+          Not a growth engine on its own -- tracked because AI revenue mix is a
+          leading indicator of enterprise AI spend actually landing in India.
+      - id: in_interconnect
+        name: "Fibre & interconnect"
+        tickers: [HFCL, STLTECH, TATACOMM, RAILTEL]
+        rationale: "Bandwidth into and between data centres scales with compute."
+
+  # =====================================================================
+  - id: grid_infra
+    name: "Grid & Power Transmission"
+    tier: 1
+    status: ACTIVE
+    description: >
+      The highest-conviction theme in this file, and the reason it exists: grid
+      capacity is the shared physical bottleneck of BOTH AI and solar. It is an
+      infrastructure build-out rather than a technology bet, so it fails less
+      often -- demand is visible in tender pipelines years ahead.
+    global_nodes:
+      - id: gl_grid_equipment
+        name: "Global T&D equipment & EPC"
+        tickers: [ETN, PWR, HUBB, GEV, NVT, PRIM, MYRG]
+    india_nodes:
+      - id: in_transformers
+        name: "Transformers & switchgear"
+        tickers: [CGPOWER, SIEMENS, ABB, POWERINDIA, TARIL, VOLTAMP, TDPOWERSYS]
+        rationale: >
+          Longest lead-time item in any grid project; pricing power appears
+          first here when the cycle tightens.
+      - id: in_conductors_cables
+        name: "Conductors & cables"
+        tickers: [APARINDS, KEI, POLYCAB, UNIVCABLES]
+        rationale: >
+          Conductor demand is a direct function of circuit-km added. Watch for
+          margin expansion, which signals capacity tightness.
+      - id: in_td_epc
+        name: "Transmission EPC"
+        tickers: [KPIL, TECHNOE, POWERGRID, KECL]
+        rationale: "Order book to sales is the cleanest visibility metric here."
+      - id: in_metering
+        name: "Smart metering & grid automation"
+        tickers: [GENUSPOWER, HPL, SCHNEIDER]
+        rationale: "RDSS-funded smart meter roll-out with multi-year mandates."
+
+  # =====================================================================
+  - id: solar
+    name: "Solar & Renewables"
+    tier: 1
+    status: ACTIVE
+    description: >
+      Careful here: falling global module prices HURT Indian module makers but
+      HELP EPC firms and IPPs, whose input costs drop. The two Indian sub-legs
+      move in opposite directions and must be scored separately.
+    global_nodes:
+      - id: gl_solar_mfg
+        name: "Global module & inverter makers"
+        tickers: [FSLR, ENPH, SEDG, DQ, JKS, CSIQ]
+      - id: gl_solar_infra
+        name: "Trackers, EPC & yieldcos"
+        tickers: [NXT, ARRY, RUN, BEP]
+    india_nodes:
+      - id: in_solar_mfg
+        name: "Cell & module manufacturing"
+        tickers: [WAAREEENER, PREMIERENE, WEBELSOLAR, BORORENEW]
+        rationale: >
+          Protected by ALMM/duties but structurally margin-squeezed by Chinese
+          overcapacity. Score valuation sanity strictly on this node.
+      - id: in_solar_epc_ipp
+        name: "EPC, IPPs & yieldcos"
+        tickers: [SWSOLAR, ADANIGREEN, NTPCGREEN, JSWENERGY, TATAPOWER]
+        rationale: >
+          Beneficiaries of cheap modules -- the inverse exposure to the node
+          above. Order book and PPA tariffs drive the thesis.
+      - id: in_wind
+        name: "Wind & hybrid"
+        tickers: [SUZLON, INOXWIND]
+        rationale: "Hybrid tenders increasingly bundle wind with solar and storage."
+
+  # =====================================================================
+  - id: energy_storage
+    name: "Energy Storage & BESS"
+    tier: 1
+    status: ACTIVE
+    description: >
+      Solar without storage is half a thesis. India's BESS tender pipeline is
+      inflecting, and viability-gap funding has made projects bankable.
+    global_nodes:
+      - id: gl_storage
+        name: "Global storage systems & materials"
+        tickers: [FLNC, TSLA, EOSE, ALB, SQM]
+    india_nodes:
+      - id: in_storage
+        name: "Cells, BMS & containerised systems"
+        tickers: [EXIDEIND, HBLENGINE, SERVOTECH]
+        rationale: >
+          Early-stage node: few pure-plays and unproven unit economics. Size
+          small until order books convert to revenue.
+      - id: in_battery_recycling
+        name: "Battery & metal recycling"
+        tickers: [GRAVITA]
+        rationale: "EPR mandates create a regulated demand floor for recyclers."
+
+  # =====================================================================
+  - id: semis_esdm
+    name: "Semiconductors & Electronics Manufacturing"
+    tier: 1
+    status: ACTIVE
+    description: >
+      India Semiconductor Mission plus PLI. Assembly, test and packaging is
+      where India realistically wins first -- fabs are a decade-long question.
+    global_nodes:
+      - id: gl_semicap
+        name: "Semicap & OSAT"
+        tickers: [AMAT, LRCX, KLAC, ASML, AMKR, TSM]
+    india_nodes:
+      - id: in_esdm
+        name: "EMS & electronics manufacturing"
+        tickers: [DIXON, KAYNES, SYRMA, CYIENTDLM, AMBER]
+        rationale: >
+          Watch gross margin, not revenue: EMS revenue can grow while value
+          capture stays thin. Margin expansion is the real inflection signal.
+      - id: in_semi_design
+        name: "Semiconductor design & IP"
+        tickers: [MOSCHIP, TATAELXSI, LTTS]
+        rationale: "Design services are the only listed semi exposure with a track record."
+
+  # =====================================================================
+  - id: water
+    name: "Water Treatment & Infrastructure"
+    tier: 1
+    status: ACTIVE
+    description: >
+      The richest of your five themes in genuine Indian pure-plays. Demand is
+      policy-mandated (AMRUT 2.0, Namami Gange, ZLD norms), so order books are
+      visible years ahead and less cyclical than industrial capex.
+    global_nodes:
+      - id: gl_water
+        name: "Global water treatment & utilities"
+        tickers: [XYL, PNR, AWK, WTRG, ERII, VEOEY]
+    india_nodes:
+      - id: in_water_epc
+        name: "Water & wastewater EPC"
+        tickers: [WABAG, IONEXCHANG, THERMAX, PRAJIND]
+        rationale: >
+          Municipal and industrial treatment contracts. Receivable days are the
+          key risk -- government counterparties pay slowly, so the working
+          capital gate matters more here than anywhere else.
+      - id: in_pumps_valves
+        name: "Pumps, valves & flow control"
+        tickers: [KIRLOSBROS, SHAKTIPUMP, WPIL, ROTO]
+        rationale: >
+          Shorter-cycle, higher-margin than EPC. Also picks up irrigation and
+          agri demand, giving a second uncorrelated driver.
+      - id: in_pipes
+        name: "Pipes & distribution"
+        tickers: [ASTRAL, SUPREMEIND, FINPIPE, JINDALSAW]
+        rationale: "Jal Jeevan and urban distribution networks; commodity-linked margins."
+
+  # =====================================================================
+  - id: health_innovation
+    name: "Innovative Health & Life Sciences"
+    tier: 1
+    status: ACTIVE
+    description: >
+      India's edge is manufacturing and services rather than novel discovery:
+      CDMO, API, diagnostics and delivery. GLP-1 volumes are the current global
+      driver pulling the peptide and API chain.
+    global_nodes:
+      - id: gl_pharma_innov
+        name: "Global innovators & tools"
+        tickers: [LLY, NVO, TMO, DHR, ISRG, IQV, CRL]
+    india_nodes:
+      - id: in_cdmo
+        name: "CDMO / CRO & specialty API"
+        tickers: [DIVISLAB, SYNGENE, LAURUSLABS, NEULANDLAB, GLAND]
+        rationale: >
+          The clearest structural winner: China+1 in pharma manufacturing plus
+          the peptide/GLP-1 capacity build. Watch capex-to-sales for the ramp.
+      - id: in_diagnostics
+        name: "Diagnostics & pathology"
+        tickers: [METROPOLIS, LALPATHLAB, THYROCARE, KRSNAA]
+        rationale: "Volume-driven, asset-light, but price competition is real."
+      - id: in_hospitals_devices
+        name: "Hospitals & medical devices"
+        tickers: [APOLLOHOSP, MAXHEALTH, FORTIS, POLYMED]
+        rationale: "Bed additions and case mix drive multi-year compounding."
+
+  # =====================================================================
+  - id: datacenter
+    name: "Data Centre Ecosystem"
+    tier: 1
+    status: ACTIVE
+    description: >
+      Tracked separately from ai_compute because it has its own capex cycle and
+      real-estate driver -- and it is the most direct, least-priced Indian AI
+      derivative.
+    global_nodes:
+      - id: gl_dc
+        name: "Global DC REITs & equipment"
+        tickers: [EQIX, DLR, VRT, MOD, COHR, CIEN]
+    india_nodes:
+      - id: in_dc_build
+        name: "DC real estate & build-out"
+        tickers: [ANANTRAJ, NETWEB, TATACOMM]
+        rationale: >
+          Thin listed universe today; expect this node to grow as DC operators
+          list. Land bank plus power tie-ups are the moat.
+
+  # =====================================================================
+  - id: defence_space
+    name: "Defence & Space Technology"
+    tier: 2
+    status: ACTIVE
+    description: >
+      Best revenue visibility of any theme here -- indigenisation mandates give
+      multi-year order books. The risk is execution and lumpy delivery, not demand.
+    global_nodes:
+      - id: gl_defence
+        name: "Global defence & space"
+        tickers: [RTX, LMT, NOC, LHX, RKLB]
+    india_nodes:
+      - id: in_defence
+        name: "Defence platforms & electronics"
+        tickers: [HAL, BEL, BDL, MAZDOCK, GRSE, DATAPATTNS, PARAS, ZENTEC, MTARTECH, SOLARINDS]
+        rationale: >
+          Score on order-book-to-sales and execution rate. Many of these have
+          re-rated hard already -- the valuation-sanity brake matters most here.
+
+  # =====================================================================
+  - id: specialty_chem
+    name: "Specialty Chemicals & Advanced Materials"
+    tier: 2
+    status: ACTIVE
+    description: >
+      The enabling layer beneath solar, batteries, semis and water membranes.
+      Cross-theme exposure: a single holding can ride several themes.
+    global_nodes:
+      - id: gl_chem
+        name: "Global industrial gas & specialty"
+        tickers: [LIN, APD, ALB]
+    india_nodes:
+      - id: in_specialty_chem
+        name: "Fluorochemicals & specialty intermediates"
+        tickers: [SRF, PIIND, NAVINFLUOR, DEEPAKNTR, FINEORG, FLUOROCHEM, VINATIORGA, CLEAN]
+        rationale: >
+          Fluorine chemistry feeds batteries, refrigerants and agrochem. Cycle
+          has been weak -- a genuine BASING-stage candidate to watch.
+
+  # =====================================================================
+  - id: recycling
+    name: "Recycling & Circular Economy"
+    tier: 2
+    status: ACTIVE
+    description: >
+      EPR mandates convert an environmental obligation into a regulated revenue
+      stream. Underfollowed in India.
+    global_nodes:
+      - id: gl_recycling
+        name: "Global waste & environmental services"
+        tickers: [WM, RSG, CLH]
+    india_nodes:
+      - id: in_recycling
+        name: "Metal, e-waste & battery recycling"
+        tickers: [GRAVITA, AWHCL]   # AWHCL = Antony Waste Handling Cell
+        rationale: "Thin listed universe; expect additions as the sector formalises."
+
+  # =====================================================================
+  - id: quantum
+    name: "Quantum Computing"
+    tier: 3
+    status: WATCHLIST
+    description: >
+      Kept honest: there is NO listed Indian pure-play. Exposure is indirect via
+      cryogenics, precision instrumentation and IT services research arms. This
+      theme is tracked for the global signal and for National Quantum Mission
+      award flow -- it should carry a small position weight at most.
+    global_nodes:
+      - id: gl_quantum
+        name: "Quantum pure-plays & platforms"
+        tickers: [IONQ, RGTI, QBTS, QUBT, IBM]
+    india_nodes:
+      - id: in_quantum_adjacent
+        name: "Cryogenics, precision & research services"
+        tickers: [MTARTECH, DATAPATTNS, TCS, LTTS]
+        rationale: >
+          Adjacency only -- quantum is a rounding error in each of these
+          companies' revenue. Do not let a quantum narrative justify the
+          valuation of an unrelated business.
+
+  # =====================================================================
+  - id: green_hydrogen
+    name: "Green Hydrogen & Electrolysers"
+    tier: 3
+    status: WATCHLIST
+    description: >
+      Economics still unproven at scale and several global projects have been
+      cancelled. Track the theme; do not size it until unit economics clear.
+    global_nodes:
+      - id: gl_h2
+        name: "Global electrolyser & fuel cell"
+        tickers: [PLUG, BE, NEL.OL]
+    india_nodes:
+      - id: in_h2
+        name: "Indian hydrogen exposure"
+        tickers: [LT, THERMAX, JSWENERGY, ADANIGREEN]
+        rationale: "Optionality within larger businesses, not pure-play exposure."
+
+  # =====================================================================
+  - id: nuclear
+    name: "Nuclear & SMR"
+    tier: 3
+    status: WATCHLIST
+    description: >
+      The AI-power endgame. India is opening nuclear to private capital, but
+      listed vehicles are few and exposure is buried inside conglomerates.
+    global_nodes:
+      - id: gl_nuclear
+        name: "Uranium, fuel & SMR"
+        tickers: [CCJ, LEU, SMR, OKLO, BWXT]
+    india_nodes:
+      - id: in_nuclear
+        name: "Nuclear equipment & fabrication"
+        tickers: [MTARTECH, WALCHANNAG, LT, NTPC]
+        rationale: "Precision fabrication capability; nuclear is a small revenue slice today."
+
+# ---------------------------------------------------------------------------
+# Macro series that drive theme rotation. Not investable -- used as context and
+# as regime inputs to the trend engine.
+macro_series:
+  DXY:      "DX-Y.NYB"
+  US10Y:    "^TNX"
+  BRENT:    "BZ=F"
+  WTI:      "CL=F"
+  COPPER:   "HG=F"
+  SILVER:   "SI=F"
+  GOLD:     "GC=F"
+  URANIUM:  "URA"
+  LITHIUM:  "LIT"
+  USDINR:   "USDINR=X"
+  VIX:      "^VIX"
+
+# Benchmark indices for relative strength. Indian index *levels* come from the
+# NSE provider -- Yahoo's history for these is unusable (see smoke test).
+benchmarks:
+  IN_LARGE:  "^NSEI"
+  IN_500:    "^CRSLDX"
+  IN_SMALL:  "^CNXSC"
+  US_SP500:  "^GSPC"
+  US_NDX:    "^NDX"
+  WORLD:     "URTH"
+  TAIWAN:    "^TWII"
+  JAPAN:     "^N225"
+  KOREA:     "^KS11"
+  GERMANY:   "^GDAXI"
+  CHINA_HK:  "^HSI"
