@@ -99,6 +99,54 @@ def validate(
         console.print(f"report: {out}")
 
 
+# ------------------------------------------------------------------ universe
+@app.command()
+def universe() -> None:
+    """Sync the investable universe from NSE: symbols, indices, surveillance, flows.
+
+    Run before `ingest prices` -- this is what defines the universe the price
+    fetcher then populates.
+    """
+    from engine.providers.nse_provider import NSEProvider
+    from engine.universe import builder
+
+    run_id = _run_id()
+    provider = NSEProvider()
+    con = db.connect()
+
+    try:
+        started = dt.datetime.now()
+        console.print("fetching NSE symbol master...")
+        symbols = builder.sync_symbol_master(con, provider)
+        console.print(f"  [green]{symbols:,}[/green] EQ-series listings")
+
+        console.print("fetching index constituents...")
+        counts = builder.sync_index_membership(con, provider)
+        table = Table(title="Index membership")
+        table.add_column("index", style="cyan")
+        table.add_column("members", justify="right")
+        for index_name, n in counts.items():
+            table.add_row(index_name, f"{n:,}")
+        console.print(table)
+
+        levels = builder.sync_index_levels(con, provider)
+        flagged = builder.sync_surveillance(con, provider)
+        flow_rows = builder.sync_flows(con, provider)
+
+        console.print(f"index levels snapshotted: [green]{levels}[/green]")
+        console.print(f"ASM-flagged names: [yellow]{flagged}[/yellow] "
+                      "(hard reject in the quality gates)")
+        console.print(f"FII/DII flow rows: [green]{flow_rows}[/green]")
+
+        investable = builder.investable_universe(con)
+        console.print(f"\n[bold]investable universe: {len(investable):,} names[/bold]")
+
+        db.log_ingest(con, run_id, "universe", None, "OK", symbols,
+                      f"{len(counts)} indices", started)
+    finally:
+        con.close()
+
+
 # -------------------------------------------------------------------- ingest
 ingest_app = typer.Typer(help="Data ingestion stages")
 app.add_typer(ingest_app, name="ingest")
@@ -110,8 +158,11 @@ def ingest_prices(
     only_resolved: bool = typer.Option(
         True, help="Skip symbols that failed validation"
     ),
+    themes_only: bool = typer.Option(
+        False, help="Restrict to theme-graph symbols instead of the full universe"
+    ),
 ) -> None:
-    """Pull daily bars for every symbol in the theme graph."""
+    """Pull daily bars for the investable universe plus all theme/macro symbols."""
     run_id = _run_id()
     graph = load_theme_graph()
     provider = YFinanceProvider()
@@ -119,6 +170,17 @@ def ingest_prices(
 
     try:
         tickers = graph.all_tickers()
+
+        if not themes_only:
+            from engine.universe.builder import investable_universe
+
+            # Order-stable union: theme and macro symbols first, then the rest
+            # of the NSE universe the screener needs in order to find names
+            # outside the hand-authored theme lists.
+            seen = dict.fromkeys(tickers)
+            for ticker in investable_universe(con):
+                seen.setdefault(ticker, None)
+            tickers = list(seen)
 
         if only_resolved:
             report_path = settings.REPORT_DIR / "ticker_validation.csv"
@@ -184,27 +246,43 @@ def coverage() -> None:
     """Report what data actually landed -- the honest view before trusting scores."""
     con = db.connect(read_only=True)
     try:
+        # `registered` counts every symbol in the master; `priced` counts those
+        # we actually hold bars for. Collapsing the two would overstate coverage,
+        # since the NSE master lists ~2,100 names we deliberately do not fetch.
         summary = con.execute("""
             SELECT s.country,
-                   count(DISTINCT s.security_id)             AS securities,
-                   count(o.date)                             AS bars,
-                   min(o.date)                               AS first_bar,
-                   max(o.date)                               AS last_bar
+                   count(DISTINCT s.security_id)                          AS registered,
+                   count(DISTINCT o.security_id)                          AS priced,
+                   count(o.date)                                          AS bars,
+                   min(o.date)                                            AS first_bar,
+                   max(o.date)                                            AS last_bar
               FROM securities s
               LEFT JOIN ohlcv o ON o.security_id = s.security_id
              GROUP BY s.country
-             ORDER BY securities DESC
+             ORDER BY priced DESC
         """).df()
 
         table = Table(title="Coverage by country")
-        for col in ("country", "securities", "bars", "first bar", "last bar"):
-            table.add_column(col)
+        for col in ("country", "registered", "priced", "bars", "first bar", "last bar"):
+            table.add_column(col, justify="right" if col != "country" else "left")
         for _, r in summary.iterrows():
             table.add_row(
-                str(r.country), f"{int(r.securities):,}", f"{int(r.bars):,}",
-                str(r.first_bar), str(r.last_bar),
+                str(r.country), f"{int(r.registered):,}", f"{int(r.priced):,}",
+                f"{int(r.bars):,}", str(r.first_bar)[:10], str(r.last_bar)[:10],
             )
         console.print(table)
+
+        gap = con.execute("""
+            SELECT count(*) AS n
+              FROM index_membership im
+              LEFT JOIN ohlcv o ON o.security_id = im.security_id
+             WHERE im.index_name = 'NIFTY TOTAL MARKET'
+               AND im.to_date IS NULL
+               AND o.security_id IS NULL
+        """).fetchone()[0]
+        if gap:
+            console.print(f"[yellow]{gap} index members have no price history[/yellow] "
+                          "— investigate before scoring")
 
         stale = con.execute("""
             WITH last_bar AS (

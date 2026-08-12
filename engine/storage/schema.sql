@@ -111,6 +111,33 @@ CREATE TABLE IF NOT EXISTS corporate_events (
     PRIMARY KEY (security_id, event_date, event_type)
 );
 
+-- Official NSE index levels. A SNAPSHOT source: NSE blocks its historical
+-- indices API, so this accumulates from the first run forward and cannot
+-- backfill. Long-history benchmarks are reconstructed from constituent prices.
+CREATE TABLE IF NOT EXISTS index_levels (
+    index_name      VARCHAR NOT NULL,
+    date            DATE    NOT NULL,
+    last            DOUBLE,
+    open            DOUBLE,
+    high            DOUBLE,
+    low             DOUBLE,
+    previous_close  DOUBLE,
+    pct_change      DOUBLE,
+    source          VARCHAR,
+    PRIMARY KEY (index_name, date)
+);
+
+-- Daily FII/DII cash-market flows (Rs crore) -- regime context for the Indian leg.
+CREATE TABLE IF NOT EXISTS flows (
+    date        DATE    NOT NULL,
+    category    VARCHAR NOT NULL,
+    buy_value   DOUBLE,
+    sell_value  DOUBLE,
+    net_value   DOUBLE,
+    source      VARCHAR,
+    PRIMARY KEY (date, category)
+);
+
 -- ---------------------------------------------------------------- theme graph
 CREATE TABLE IF NOT EXISTS themes (
     theme_id     VARCHAR PRIMARY KEY,
