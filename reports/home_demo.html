@@ -1,0 +1,618 @@
+<title>AI-Investo — Home screen preview</title>
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  /* Bare :root carries the complete LIGHT palette for the review page. */
+  :root {
+    --ground:  #EFF3F3;
+    --surface: #FFFFFF;
+    --raised:  #F5F8F8;
+    --ink:     #0E1A1F;
+    --ink-dim: #40565D;
+    --muted:   #63797F;
+    --line:    #D6E1E2;
+    --accent:  #B36F0E;
+
+    /* The phone screen commits to one dark identity in every theme -- it is a
+       product surface with its own look, not a reflection of the host page.
+       Defined unconditionally so it can never resolve to nothing. */
+    --p-ground:  #0B1317;
+    --p-surface: #121D22;
+    --p-raised:  #18272F;
+    --p-ink:     #E6EEEF;
+    --p-muted:   #7B959C;
+    --p-line:    #22343B;
+    --p-india:   #E9A23B;
+    --p-global:  #5FA8C7;
+    --p-pos:     #4FB286;
+    --p-neg:     #D2695A;
+    --p-warn:    #E4C25C;
+
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      /* Deliberately darker than --p-ground so the phone reads as a device
+         sitting on the page rather than dissolving into it. */
+      --ground:  #060D10;
+      --surface: #101A1F;
+      --raised:  #17252B;
+      --ink:     #E6EEEF;
+      --ink-dim: #A9BEC3;
+      --muted:   #7B959C;
+      --line:    #223339;
+      --accent:  #E9A23B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:  #0B1317;
+    --surface: #111C21;
+    --raised:  #17252B;
+    --ink:     #E6EEEF;
+    --ink-dim: #A9BEC3;
+    --muted:   #7B959C;
+    --line:    #223339;
+    --accent:  #E9A23B;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  /* ------------------------------------------------------------- masthead */
+  .masthead { display: flex; flex-direction: column; gap: 14px; margin-bottom: 44px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .masthead h1 {
+    margin: 0; font-size: clamp(30px, 5vw, 46px); line-height: 1.05;
+    letter-spacing: -0.03em; font-weight: 650; text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 62ch; color: var(--ink-dim); font-size: 17px; }
+
+  .factbar {
+    display: flex; flex-wrap: wrap; gap: 0; margin-top: 10px;
+    border: 1px solid var(--line); border-radius: 3px; overflow: hidden;
+    background: var(--surface); width: fit-content;
+  }
+  .fact { padding: 9px 16px; border-right: 1px solid var(--line); }
+  .fact:last-child { border-right: 0; }
+  .fact b {
+    display: block; font-family: var(--mono); font-size: 15px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .fact span {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  /* --------------------------------------------------------------- layout */
+  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 56px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; gap: 40px; } }
+
+  .phone-col { position: sticky; top: 32px; }
+  @media (max-width: 900px) { .phone-col { position: static; } }
+
+  /* ---------------------------------------------------------------- phone */
+  .phone {
+    width: 390px; max-width: 100%; height: 812px;
+    background: var(--p-ground); border-radius: 38px;
+    border: 1px solid #2B3E46;
+    box-shadow: 0 1px 0 #35505A inset, 0 24px 60px rgba(0,0,0,.34);
+    overflow: hidden; display: flex; flex-direction: column;
+    color: var(--p-ink);
+  }
+  .screen { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  .screen::-webkit-scrollbar { width: 0; }
+
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 26px 4px; font-family: var(--mono); font-size: 12px;
+    color: var(--p-ink); font-variant-numeric: tabular-nums;
+  }
+  .statusbar .glyphs { display: flex; gap: 5px; align-items: center; }
+  .bar { width: 3px; border-radius: 1px; background: var(--p-ink); }
+
+  .apphead { padding: 14px 20px 10px; }
+  .apphead .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .wordmark {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--p-india);
+  }
+  .asof { font-family: var(--mono); font-size: 10.5px; color: var(--p-muted); }
+  .apphead h2 {
+    margin: 6px 0 2px; font-size: 27px; letter-spacing: -0.025em; font-weight: 650;
+  }
+  .subline { font-family: var(--mono); font-size: 10.5px; color: var(--p-muted); }
+
+  .band-label {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 20px; margin: 20px 0 9px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+
+  /* pulse */
+  .pulse { display: flex; gap: 8px; overflow-x: auto; padding: 0 20px 4px; }
+  .pulse::-webkit-scrollbar { height: 0; }
+  .chip {
+    flex: 0 0 auto; min-width: 108px; padding: 9px 11px;
+    background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 4px;
+  }
+  .chip .nm {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .chip .lv {
+    font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums;
+    margin-top: 3px; letter-spacing: -0.02em;
+  }
+  .chip .ch { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--p-pos); }
+  .neg { color: var(--p-neg); }
+
+  /* attention card */
+  .attention {
+    margin: 0 20px; padding: 13px 14px; border-radius: 5px;
+    background: var(--p-surface);
+    border: 1px solid var(--p-line); border-left: 2px solid var(--p-india);
+  }
+  .attention .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--p-india);
+  }
+  .attention h3 { margin: 7px 0 5px; font-size: 15.5px; letter-spacing: -0.015em; font-weight: 620; }
+  .attention p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #C3D3D6; }
+  .attention .legs {
+    display: flex; gap: 16px; margin-top: 10px; padding-top: 9px;
+    border-top: 1px solid var(--p-line);
+    font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums;
+  }
+  .legdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+  /* theme board */
+  .board { padding: 0 20px; display: flex; flex-direction: column; gap: 1px; }
+  .trow {
+    display: grid; grid-template-columns: 1fr 76px 40px;
+    gap: 10px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--p-line);
+  }
+  .trow:last-child { border-bottom: 0; }
+  .tname { font-size: 13.5px; font-weight: 560; letter-spacing: -0.01em; }
+  .tmeta {
+    display: flex; align-items: center; gap: 6px; margin-top: 4px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--p-muted);
+  }
+  .pill {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 2px 5px; border-radius: 2px;
+    border: 1px solid currentColor;
+  }
+  .st-ACCELERATING { color: var(--p-pos); }
+  .st-EMERGING     { color: var(--p-india); }
+  .st-BASING       { color: var(--p-muted); }
+  .st-CROWDED      { color: var(--p-warn); }
+  .st-FADING       { color: var(--p-neg); }
+
+  .conf { text-align: right; font-family: var(--mono); font-size: 12px;
+          font-variant-numeric: tabular-nums; }
+  .confbar { height: 2px; background: var(--p-line); border-radius: 1px; margin-top: 4px; }
+  .confbar i { display: block; height: 100%; background: var(--p-ink); border-radius: 1px; }
+
+  /* gems pending */
+  .pending {
+    margin: 0 20px; padding: 14px; border-radius: 5px;
+    border: 1px dashed var(--p-line); background: transparent;
+  }
+  .pending .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .pending p { margin: 7px 0 0; font-size: 12.5px; color: #A9BEC3; line-height: 1.5; }
+
+  .disclaimer {
+    margin: 18px 20px 0; padding-top: 12px; border-top: 1px solid var(--p-line);
+    font-family: var(--mono); font-size: 9.5px; line-height: 1.6; color: var(--p-muted);
+  }
+
+  /* tab bar */
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--p-line); background: var(--p-surface);
+    padding: 9px 0 22px;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .tab.on { color: var(--p-india); }
+  .tab svg { width: 17px; height: 17px; }
+
+  /* ---------------------------------------------------------------- notes */
+  .notes { display: flex; flex-direction: column; gap: 30px; }
+  .note { display: flex; gap: 14px; }
+  .note .marker {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid var(--line); display: grid; place-items: center;
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    background: var(--surface);
+  }
+  .note h3 { margin: 2px 0 6px; font-size: 16.5px; letter-spacing: -0.015em; font-weight: 620; }
+  .note p { margin: 0; color: var(--ink-dim); font-size: 14.5px; max-width: 58ch; }
+  .note p + p { margin-top: 9px; }
+  .note code {
+    font-family: var(--mono); font-size: 13px; background: var(--raised);
+    padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line);
+  }
+
+  .callout {
+    margin-top: 8px; padding: 16px 18px; border-radius: 4px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 2px solid var(--accent);
+  }
+  .callout h3 { margin: 0 0 7px; font-size: 16px; letter-spacing: -0.015em; }
+  .callout p { margin: 0; font-size: 14.5px; color: var(--ink-dim); }
+  .callout p + p { margin-top: 9px; }
+
+  /* status table */
+  .status { margin-top: 64px; }
+  .status h2 {
+    font-size: 22px; letter-spacing: -0.02em; margin: 0 0 4px; font-weight: 640;
+  }
+  .status > p { margin: 0 0 18px; color: var(--ink-dim); max-width: 62ch; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-family: var(--mono); font-size: 13px; }
+  .yes { color: #1E7F58; font-family: var(--mono); font-size: 12.5px; }
+  .no  { color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .yes { color: #4FB286; }
+  }
+  :root[data-theme="dark"] .yes { color: #4FB286; }
+
+  footer {
+    margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--muted); max-width: 70ch;
+  }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">Design review · before we build</div>
+    <h1>The home screen</h1>
+    <p class="lede">
+      Every figure on this screen is computed from the price history already in
+      the database — no placeholder numbers. Where a feature needs data we have
+      not ingested yet, the screen says so rather than inventing a value.
+    </p>
+    <div class="factbar" id="factbar"></div>
+  </header>
+
+  <div class="layout">
+    <div class="phone-col">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar">
+            <span id="clock">9:41</span>
+            <span class="glyphs">
+              <span class="bar" style="height:5px"></span>
+              <span class="bar" style="height:7px"></span>
+              <span class="bar" style="height:9px"></span>
+              <span class="bar" style="height:11px"></span>
+              <span style="margin-left:4px">100%</span>
+            </span>
+          </div>
+
+          <div class="apphead">
+            <div class="row">
+              <span class="wordmark">AI-Investo</span>
+              <span class="asof" id="asof"></span>
+            </div>
+            <h2>Today</h2>
+            <div class="subline" id="subline"></div>
+          </div>
+
+          <div class="band-label"><span>Market pulse</span><span id="pulse-note"></span></div>
+          <div class="pulse" id="pulse"></div>
+
+          <div class="band-label"><span>Worth a look</span></div>
+          <div id="attention"></div>
+
+          <div class="band-label"><span>Theme board</span><span>14 themes</span></div>
+          <div class="board" id="board"></div>
+
+          <div class="band-label"><span>Gems</span></div>
+          <div class="pending">
+            <div class="tag">No scores yet</div>
+            <p>
+              G.E.M. scoring needs reported financials with filing dates. Those
+              arrive from NSE/BSE XBRL at Stage&nbsp;2. Ranking stocks on price
+              action alone would just be a momentum screen wearing a different name.
+            </p>
+          </div>
+
+          <div class="disclaimer">
+            Research tool. Ranks and explains — does not advise.
+            Every decision is yours.
+          </div>
+          <div style="height:20px"></div>
+        </div>
+
+        <nav class="tabbar">
+          <span class="tab on">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+            Today
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 4 5-8 4 5"/></svg>
+            Themes
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l3 6 6 .8-4.5 4.2 1.2 6-5.7-3.2L6.3 20l1.2-6L3 9.8 9 9z"/></svg>
+            Gems
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18v13H3z"/><path d="M8 7V4h8v3"/></svg>
+            Folio
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg>
+            Journal
+          </span>
+        </nav>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="callout">
+        <h3>One thing changed from the approved spec</h3>
+        <p>
+          The spec's headline feature was a <em>propagation lag</em> — "global fired
+          eight weeks ago, India hasn't yet." I built it, measured it across all 14
+          themes on 2012–2026 history, and it does not exist. Correlation decays
+          monotonically from lag zero: <code>ai_compute</code> runs 0.48 → 0.39 →
+          0.27 → 0.12 across 0/4/8/12 weeks. India's legs move <em>with</em> their
+          global counterparts, not behind them.
+        </p>
+        <p>
+          So the screen shows <strong>divergence</strong> instead: how far India's leg
+          has drifted from its global leg versus that pair's own history. Because the
+          legs correlate only loosely (peak r ≈ 0.2–0.5), the gap between them moves a
+          lot — which makes it measurable in a way a fixed lag never was. Whether wide
+          gaps actually close is a Stage&nbsp;3 backtest question, and the copy is
+          written as observation, not prediction.
+        </p>
+      </div>
+
+      <div class="note">
+        <span class="marker">1</span>
+        <div>
+          <h3>Market pulse</h3>
+          <p>
+            Real closes as of 10 Aug 2026. Korea at −13.6% over a month next to
+            +95.8% over a year is exactly the kind of thing a single number would
+            hide, so each chip carries both horizons.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">2</span>
+        <div>
+          <h3>Worth a look</h3>
+          <p>
+            One card, not five. The screen surfaces the single strongest reading and
+            states the arithmetic behind it — percentile, standard deviations, both
+            legs — so you can disagree with it. A signal you cannot audit is a signal
+            you should not act on.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">3</span>
+        <div>
+          <h3>Two colours, one meaning</h3>
+          <p>
+            Marigold is always India, cyan is always global — in the sparklines, the
+            legend, everywhere. The two-leg structure is the core of the data model,
+            so it gets the colour system rather than the decoration.
+          </p>
+          <p>
+            Each sparkline rebases both legs to 100 at the start of an 18-month window
+            on a shared scale, so the gap between the lines <em>is</em> the divergence
+            the card describes.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">4</span>
+        <div>
+          <h3>Stage, then strength</h3>
+          <p>
+            Stage answers "where in its life is this theme"; confluence answers "how
+            aligned are daily, weekly and monthly". Ordering matters in the classifier —
+            <code>CROWDED</code> is tested before <code>ACCELERATING</code>, so a theme
+            that has already run hard is never dressed up as a fresh entry.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">5</span>
+        <div>
+          <h3>The empty Gems tab is the point</h3>
+          <p>
+            It would be easy to rank these 208 names on price momentum today and call
+            it a score. That would be a momentum screen with a better logo. The tab
+            stays empty until fundamentals with real filing dates land at Stage&nbsp;2.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="status">
+    <h2>What is real on this screen</h2>
+    <p>
+      Worth being precise about, since a mockup that quietly mixes computed and
+      invented numbers is worse than no mockup.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Element</th><th>Status</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Market pulse</td><td class="yes">computed</td><td>626,937 ingested daily bars</td></tr>
+          <tr><td>Theme indices</td><td class="yes">computed</td><td>equal-weight baskets, 208 validated tickers</td></tr>
+          <tr><td>Sparklines</td><td class="yes">computed</td><td>18 months, both legs rebased to 100</td></tr>
+          <tr><td>Stage + confluence</td><td class="yes">computed</td><td>daily/weekly/monthly momentum</td></tr>
+          <tr><td>Divergence + percentile</td><td class="yes">computed</td><td>13-week momentum gap vs own history</td></tr>
+          <tr><td>G.E.M. scores</td><td class="no">stage 2</td><td>needs XBRL fundamentals with filing dates</td></tr>
+          <tr><td>Quality gates</td><td class="no">stage 2</td><td>needs pledge, cash-flow, ownership data</td></tr>
+          <tr><td>Portfolio + journal</td><td class="no">stage 5</td><td>no holdings entered yet</td></tr>
+          <tr><td>Thresholds behind stages</td><td class="no">stage 3</td><td>reasoned defaults, not yet calibrated</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Personal research tool. Not investment advice, and not a recommendation to buy
+    or sell any security. Theme membership is hand-authored in
+    <code>config/themes.yaml</code> and reflects one reading of each value chain —
+    it is a starting point for your judgement, not a substitute for it.
+  </footer>
+</div>
+
+<script>
+const DATA = {"as_of":"2026-08-10","bars":626937,"securities":208,"pulse":[{"label":"IN_LARGE","symbol":"^NSEI","level":24583.80078125,"d_1m":1.5569956687679465,"m_12m":-1.0913274826403696,"above_ma200":false},{"label":"IN_500","symbol":"^CRSLDX","level":23743.19921875,"d_1m":1.690903109077757,"m_12m":3.198324108897599,"above_ma200":true},{"label":"IN_SMALL","symbol":"^CNXSC","level":null,"d_1m":null,"m_12m":null,"above_ma200":null},{"label":"US_SP500","symbol":"^GSPC","level":7758.580078125,"d_1m":2.418224515174572,"m_12m":22.375080096608823,"above_ma200":true},{"label":"US_NDX","symbol":"^NDX","level":29669.744140625,"d_1m":-0.5209209207636012,"m_12m":26.850539675413998,"above_ma200":true},{"label":"WORLD","symbol":"URTH","level":210.2899932861328,"d_1m":2.7659621112561927,"m_12m":23.823139898868284,"above_ma200":true},{"label":"TAIWAN","symbol":"^TWII","level":44928.76171875,"d_1m":-0.9389291675494627,"m_12m":92.2959653378628,"above_ma200":true},{"label":"JAPAN","symbol":"^N225","level":65606.7109375,"d_1m":-1.8143568251848152,"m_12m":58.255370050962064,"above_ma200":true},{"label":"KOREA","symbol":"^KS11","level":6258.77001953125,"d_1m":-13.633898791126942,"m_12m":95.82828566236354,"above_ma200":true},{"label":"GERMANY","symbol":"^GDAXI","level":26346.119140625,"d_1m":5.102424353395385,"m_12m":9.404706347611281,"above_ma200":true},{"label":"CHINA_HK","symbol":"^HSI","level":25937.490234375,"d_1m":7.290020303512912,"m_12m":3.020862973822447,"above_ma200":true}],"themes":[{"id":"health_innovation","name":"Innovative Health & Life Sciences","tier":1,"status":"ACTIVE","global":{"level":1516.1702276156184,"d_1m":6.114965192802857,"w_3m":21.390113985658555,"m_12m":32.08209465385507,"m_36m":32.55974557695935,"above_ma50":true,"above_ma200":true,"from_36m_high":-6.1445753273795205,"vol_ann":26.21942456468171},"india":{"level":7447.595766153306,"d_1m":7.932663712505805,"w_3m":16.924413570277896,"m_12m":18.645614740011073,"m_36m":141.10304914421707,"above_ma50":true,"above_ma200":true,"from_36m_high":0.0,"vol_ann":16.03116971183095},"stage":"ACCELERATING","global_stage":"ACCELERATING","confluence":80.0,"lag":{"profile":[[0,0.371],[1,0.355],[2,0.319],[3,0.29],[4,0.261],[5,0.233],[6,0.199],[7,0.179],[8,0.148],[9,0.111],[10,0.077],[11,0.05],[12,0.017],[13,-0.004],[14,-0.016],[15,-0.014],[16,-0.01],[17,-0.011],[18,-0.009],[19,0.004],[20,0.009],[21,0.028],[22,0.046],[23,0.072],[24,0.1],[25,0.118],[26,0.129]],"best_lag":0,"best_corr":0.371,"corr_at_zero":0.371,"leads":false},"divergence":{"state":"INDIA_TRAILING","text":"Global leg up 28% over 13 weeks while India is up 17%. That gap sits in the 13th percentile of its own history (-1.1 SD) \u2014 India has rarely trailed this theme by this much.","gap_now":-10.6,"gap_z":-1.09,"gap_pct":13.0,"global_13w":27.9,"india_13w":17.2},"india_count":13,"global_count":7,"india_spark":[5396.2,5220.1,5026.1,4862.1,4920.0,5219.3,5038.1,5292.8,5367.6,5316.9,5328.3,5416.1,5612.0,5581.8,5678.1,5931.5,6197.9,6274.6,6218.9,6391.5,6263.0,6344.1,6402.6,6090.5,6322.9,6430.9,6483.3,6452.3,6495.8,6478.2,6186.0,6076.9,6095.8,6213.7,6053.8,5674.2,5853.9,5830.8,5770.0,5616.0,5351.4,5351.1,5819.4,5806.5,6143.8,6415.6,6522.0,6386.4,6569.0,6749.4,6927.0,6893.6,6920.8,7117.9],"global_spark":[1408.9,1346.1,1368.1,1314.9,1319.9,1253.0,1075.8,1094.2,1169.2,1172.6,1179.2,1159.9,1213.5,1194.8,1212.8,1254.7,1181.7,1241.1,1155.5,1238.9,1242.0,1221.3,1236.2,1175.7,1311.8,1298.4,1370.4,1348.9,1379.0,1456.7,1414.7,1428.8,1487.7,1556.7,1537.0,1492.9,1371.5,1304.4,1274.0,1247.9,1181.6,1216.8,1222.0,1255.1,1213.5,1217.9,1223.8,1284.8,1288.2,1260.2,1404.3,1425.2,1344.8,1428.0]},{"id":"datacenter","name":"Data Centre Ecosystem","tier":1,"status":"ACTIVE","global":{"level":4138.430309895917,"d_1m":-6.5046368188037,"w_3m":-11.725765763359963,"m_12m":112.77741967733404,"m_36m":429.8854608871485,"above_ma50":false,"above_ma200":true,"from_36m_high":-18.512188092895588,"vol_ann":43.39968855954678},"india":{"level":6538.749648261324,"d_1m":3.6446308744315647,"w_3m":21.091960832961366,"m_12m":43.093556601790354,"m_36m":209.6090429485937,"above_ma50":true,"above_ma200":true,"from_36m_high":-2.606424290728371,"vol_ann":33.60397367522577},"stage":"ACCELERATING","global_stage":"BASING","confluence":85.0,"lag":{"profile":[[0,0.33],[1,0.339],[2,0.338],[3,0.324],[4,0.3],[5,0.281],[6,0.265],[7,0.258],[8,0.242],[9,0.231],[10,0.215],[11,0.176],[12,0.141],[13,0.115],[14,0.102],[15,0.092],[16,0.092],[17,0.087],[18,0.078],[19,0.063],[20,0.045],[21,0.039],[22,0.036],[23,0.039],[24,0.053],[25,0.059],[26,0.055]],"best_lag":1,"best_corr":0.339,"corr_at_zero":0.33,"leads":false},"divergence":{"state":"INDIA_AHEAD","text":"India up 20% versus global -14% over 13 weeks, a gap wider than 91% of history (+1.4 SD). India is leading, not catching up.","gap_now":34.2,"gap_z":1.41,"gap_pct":91.0,"global_13w":-14.4,"india_13w":19.8},"india_count":3,"global_count":6,"india_spark":[4268.4,3895.4,3821.0,3317.5,3591.9,3849.1,3616.1,3633.6,3598.6,3552.1,4032.0,4344.1,4433.2,4107.9,4228.3,4287.2,4500.5,4317.2,4458.7,4475.4,4366.4,4910.5,5150.3,5766.5,6264.8,6045.2,6134.0,5750.1,5706.6,5525.4,5191.2,5270.8,5319.2,5547.7,5445.0,4857.5,5206.1,5388.7,5485.2,4881.9,4792.2,4652.9,5227.9,5165.1,5587.6,5487.5,5806.4,6391.8,6332.1,6522.2,6276.4,6343.5,6302.1,6452.9],"global_spark":[1741.4,1652.5,1473.0,1310.1,1412.7,1293.8,1143.1,1256.2,1400.3,1517.5,1639.5,1620.8,1616.7,1654.7,1703.3,1655.0,1736.1,1886.4,1949.1,1817.1,1908.7,1958.0,2138.6,2114.0,2291.2,2335.4,2484.3,2542.3,2325.9,2477.6,2612.0,2368.5,2572.6,2457.6,2646.8,2949.3,3248.2,3451.8,3805.5,3615.4,3629.3,3694.0,4278.2,4532.4,4566.8,4951.3,4639.9,4755.8,4343.2,4954.7,4450.9,4279.7,4245.3,3857.2]},{"id":"quantum","name":"Quantum Computing","tier":3,"status":"WATCHLIST","global":{"level":391337618.9993399,"d_1m":0.9805961572805888,"w_3m":-1.95967759461263,"m_12m":9.404364290263722,"m_36m":930.0544999536963,"above_ma50":false,"above_ma200":false,"from_36m_high":-44.838436587354224,"vol_ann":79.87936797960211},"india":{"level":1241.1495738338797,"d_1m":4.919034311375081,"w_3m":5.073645409010363,"m_12m":56.46048245017339,"m_36m":67.26663449711108,"above_ma50":true,"above_ma200":true,"from_36m_high":-4.179256028514066,"vol_ann":28.947030109514866},"stage":"ACCELERATING","global_stage":"BASING","confluence":79.7,"lag":{"profile":[[0,0.191],[1,0.169],[2,0.151],[3,0.134],[4,0.111],[5,0.1],[6,0.068],[7,0.032],[8,-0.001],[9,-0.037],[10,-0.066],[11,-0.08],[12,-0.116],[13,-0.13],[14,-0.132],[15,-0.125],[16,-0.112],[17,-0.099],[18,-0.099],[19,-0.081],[20,-0.065],[21,-0.049],[22,-0.04],[23,-0.031],[24,-0.032],[25,-0.022],[26,-0.023]],"best_lag":0,"best_corr":0.191,"corr_at_zero":0.191,"leads":false},"divergence":{"state":"IN_LINE","text":"India +5% versus global -1% over 13 weeks \u2014 within the normal range for this pair (+0.2 SD).","gap_now":6.5,"gap_z":0.23,"gap_pct":60.0,"global_13w":-1.3,"india_13w":5.3},"india_count":4,"global_count":5,"india_spark":[831.0,768.2,727.6,660.9,679.3,717.9,671.0,706.9,780.5,750.5,823.9,843.8,859.6,859.7,832.3,837.9,818.5,770.2,782.4,775.5,755.9,754.0,844.1,809.4,845.9,875.6,883.9,879.4,957.9,945.3,909.0,902.2,906.8,926.4,892.6,901.7,970.0,953.7,980.3,933.2,924.0,929.2,1058.4,1095.0,1197.7,1198.0,1244.3,1189.3,1213.8,1255.6,1204.5,1181.1,1184.8,1153.8],"global_spark":[226622028.8,200327689.1,169027742.7,144610697.6,214901933.0,192635519.9,167013216.8,181621282.7,194003107.0,236863261.4,286732164.3,322433068.8,328008950.8,343703775.8,351398924.4,368596082.2,389237255.8,346660837.2,357862897.4,336176074.7,363831790.5,370426275.1,489392120.1,520679930.2,635036418.5,621821627.1,554408628.3,523081760.2,437532429.2,440338599.8,501180361.8,424969215.1,436275730.6,478875800.6,467498998.8,412684044.6,373376989.7,339189350.4,351312445.8,335577681.7,302132515.1,288709172.4,289660557.6,387994616.9,371959994.6,426009828.4,383640046.6,545577483.8,436340055.6,455722159.9,431098666.6,364106165.9,329192008.8,343072075.9]},{"id":"ai_compute","name":"AI & Compute","tier":1,"status":"ACTIVE","global":{"level":11318.407587376862,"d_1m":2.023865538789704,"w_3m":12.360193734013691,"m_12m":84.48392532831926,"m_36m":376.7316374245744,"above_ma50":true,"above_ma200":true,"from_36m_high":-4.61031157973707,"vol_ann":36.23510689882373},"india":{"level":4177.298984102106,"d_1m":5.502648672573107,"w_3m":11.714940565867371,"m_12m":29.842969547177244,"m_36m":128.06323463252687,"above_ma50":true,"above_ma200":true,"from_36m_high":0.0,"vol_ann":18.705499367303695},"stage":"ACCELERATING","global_stage":"CROWDED","confluence":79.0,"lag":{"profile":[[0,0.475],[1,0.468],[2,0.445],[3,0.419],[4,0.39],[5,0.359],[6,0.325],[7,0.298],[8,0.272],[9,0.239],[10,0.201],[11,0.158],[12,0.119],[13,0.097],[14,0.091],[15,0.098],[16,0.1],[17,0.104],[18,0.11],[19,0.127],[20,0.146],[21,0.166],[22,0.189],[23,0.22],[24,0.249],[25,0.275],[26,0.275]],"best_lag":0,"best_corr":0.475,"corr_at_zero":0.475,"leads":false},"divergence":{"state":"IN_LINE","text":"India +11% versus global +14% over 13 weeks \u2014 within the normal range for this pair (-0.1 SD).","gap_now":-3.6,"gap_z":-0.11,"gap_pct":43.0,"global_13w":14.3,"india_13w":10.7},"india_count":20,"global_count":18,"india_spark":[3202.6,3057.2,2974.6,2826.8,2810.7,3007.1,2789.9,2872.8,2911.6,2841.0,3088.8,3178.4,3244.0,3317.9,3334.8,3359.6,3329.4,3193.6,3181.7,3201.5,3156.4,3179.0,3347.7,3178.9,3261.9,3313.5,3370.2,3334.7,3435.9,3400.6,3325.1,3326.5,3301.4,3312.9,3250.7,3246.9,3463.8,3466.3,3406.3,3309.2,3242.8,3242.0,3639.1,3668.2,3831.4,3753.1,3918.5,4027.9,3907.4,4036.1,3905.1,3997.1,4007.1,4037.5],"global_spark":[5020.9,5173.0,4510.6,4063.5,4350.8,4002.2,3471.7,3680.4,4073.2,4308.8,4836.0,4828.6,5107.6,5318.9,5668.1,5736.1,5840.6,6208.7,6184.8,5991.3,6197.0,6256.7,6788.9,6726.5,7397.9,7255.8,7686.9,7301.8,6904.9,7029.2,7325.6,6550.9,7017.4,7008.4,7130.6,7484.8,7322.3,7332.5,7355.9,7521.3,7066.0,7000.8,7967.7,8940.2,9225.5,10118.4,9901.7,11549.2,10432.1,11624.0,10957.3,10733.8,10813.0,10380.9]},{"id":"grid_infra","name":"Grid & Power Transmission","tier":1,"status":"ACTIVE","global":{"level":2462.5818048540414,"d_1m":-2.677727000937258,"w_3m":-6.557693900820327,"m_12m":48.237138144387146,"m_36m":239.03365727172,"above_ma50":false,"above_ma200":true,"from_36m_high":-15.152350161982675,"vol_ann":37.412841512127045},"india":{"level":7761.896211976713,"d_1m":6.060385831110016,"w_3m":10.936282781561468,"m_12m":28.96552820622953,"m_36m":230.01577087640763,"above_ma50":true,"above_ma200":true,"from_36m_high":-0.5324037729037445,"vol_ann":23.49843645906921},"stage":"ACCELERATING","global_stage":"BASING","confluence":78.7,"lag":{"profile":[[0,0.347],[1,0.366],[2,0.363],[3,0.348],[4,0.324],[5,0.301],[6,0.277],[7,0.267],[8,0.253],[9,0.232],[10,0.198],[11,0.152],[12,0.098],[13,0.055],[14,0.022],[15,0.011],[16,0.006],[17,0.002],[18,0.002],[19,0.004],[20,0.005],[21,0.006],[22,0.019],[23,0.037],[24,0.062],[25,0.092],[26,0.105]],"best_lag":1,"best_corr":0.366,"corr_at_zero":0.347,"leads":false},"divergence":{"state":"IN_LINE","text":"India +10% versus global -9% over 13 weeks \u2014 within the normal range for this pair (+0.9 SD).","gap_now":18.3,"gap_z":0.92,"gap_pct":84.0,"global_13w":-8.6,"india_13w":9.7},"india_count":18,"global_count":7,"india_spark":[5066.5,4739.6,4583.6,4355.4,4320.3,4770.6,4552.9,4747.5,4848.0,4773.2,5372.4,5755.9,5889.7,5793.7,6004.0,6019.7,6116.3,5836.0,5917.7,5833.8,5753.5,5874.6,6052.4,5767.6,5836.2,5820.3,5922.7,5821.0,5947.1,5801.2,5544.4,5448.7,5515.8,5448.6,5099.0,5124.8,5727.0,5961.9,6151.5,5763.5,5689.4,5687.6,6537.3,6929.3,7268.3,7078.7,7403.9,7211.2,7196.9,7790.6,7546.0,7302.2,7298.6,7359.8],"global_spark":[1257.2,1211.3,1108.5,988.1,1097.4,1015.8,936.6,1021.4,1119.7,1229.7,1338.3,1331.5,1363.0,1389.1,1465.5,1502.6,1552.5,1650.6,1662.2,1634.1,1703.4,1638.4,1728.0,1766.0,1813.5,1798.4,1842.5,1846.3,1752.7,1809.6,1867.8,1733.0,1820.6,1796.2,1963.0,2052.5,2165.1,2228.2,2236.4,2113.6,2124.1,2179.9,2422.8,2491.6,2718.4,2740.0,2565.5,2622.3,2396.1,2831.1,2625.7,2475.2,2475.3,2397.5]},{"id":"defence_space","name":"Defence & Space Technology","tier":2,"status":"ACTIVE","global":{"level":1953.753913525933,"d_1m":8.458937744740558,"w_3m":6.690569661353019,"m_12m":43.949916191653,"m_36m":208.4600892194967,"above_ma50":true,"above_ma200":true,"from_36m_high":-4.409528197038181,"vol_ann":29.86241969049977},"india":{"level":13228.594970464763,"d_1m":-0.3172217706718272,"w_3m":7.790982159320281,"m_12m":37.65658617405676,"m_36m":244.12609984986645,"above_ma50":true,"above_ma200":true,"from_36m_high":-6.182045380730672,"vol_ann":29.74085776293089},"stage":"ACCELERATING","global_stage":"ACCELERATING","confluence":72.9,"lag":{"profile":[[0,0.041],[1,0.033],[2,0.023],[3,-0.009],[4,-0.041],[5,-0.059],[6,-0.087],[7,-0.106],[8,-0.125],[9,-0.148],[10,-0.175],[11,-0.199],[12,-0.231],[13,-0.251],[14,-0.254],[15,-0.244],[16,-0.213],[17,-0.186],[18,-0.166],[19,-0.145],[20,-0.117],[21,-0.085],[22,-0.044],[23,0.001],[24,0.037],[25,0.079],[26,0.101]],"best_lag":26,"best_corr":0.101,"corr_at_zero":0.041,"leads":false},"divergence":{"state":"IN_LINE","text":"India +9% versus global +3% over 13 weeks \u2014 within the normal range for this pair (+0.0 SD).","gap_now":6.1,"gap_z":0.05,"gap_pct":61.0,"global_13w":3.3,"india_13w":9.3},"india_count":10,"global_count":5,"india_spark":[7588.4,6858.6,6396.4,6174.9,6600.6,7525.8,7404.9,7871.9,8875.8,8673.0,10058.8,11104.1,11144.4,11053.8,10854.7,10985.6,10341.5,9592.1,9471.4,9533.1,8949.9,9081.5,10197.0,9795.5,9926.7,10106.2,10016.4,10009.6,10447.8,10213.1,9485.6,9077.9,9476.6,9844.5,9676.0,10111.6,10045.3,10153.1,10084.9,10495.5,9913.7,9758.9,11269.9,11952.8,12258.9,12330.5,12570.8,12289.6,12700.2,13862.5,13600.9,13038.2,12933.3,12588.3],"global_spark":[1036.3,998.7,972.5,987.5,1008.3,992.9,948.1,1036.3,1045.1,1054.5,1100.3,1128.1,1172.6,1167.6,1232.4,1273.0,1335.2,1360.7,1348.5,1339.7,1411.5,1383.5,1423.0,1468.8,1627.9,1553.8,1580.9,1477.2,1440.9,1410.8,1478.7,1514.1,1651.2,1777.4,1919.6,1981.1,1938.1,2009.7,2043.9,1991.6,1913.2,1855.4,1904.8,1894.2,1778.6,1884.3,1949.4,1910.6,1864.0,1792.2,1855.0,1780.2,1727.7,1789.7]},{"id":"semis_esdm","name":"Semiconductors & Electronics Manufacturing","tier":1,"status":"ACTIVE","global":{"level":6428.804110820258,"d_1m":-11.314235096477498,"w_3m":2.4324973584307408,"m_12m":151.63716376704616,"m_36m":270.6034786561471,"above_ma50":false,"above_ma200":true,"from_36m_high":-25.52329296805699,"vol_ann":51.47241458215534},"india":{"level":1960.2198040392605,"d_1m":4.674963744135607,"w_3m":11.999920273723962,"m_12m":6.037193282195719,"m_36m":103.66078574808179,"above_ma50":true,"above_ma200":true,"from_36m_high":-6.642735561987923,"vol_ann":27.25994175989931},"stage":"BASING","global_stage":"EMERGING","confluence":70.1,"lag":{"profile":[[0,0.313],[1,0.321],[2,0.32],[3,0.323],[4,0.318],[5,0.303],[6,0.292],[7,0.296],[8,0.294],[9,0.288],[10,0.266],[11,0.227],[12,0.193],[13,0.157],[14,0.14],[15,0.128],[16,0.11],[17,0.101],[18,0.095],[19,0.093],[20,0.089],[21,0.088],[22,0.089],[23,0.113],[24,0.14],[25,0.166],[26,0.192]],"best_lag":3,"best_corr":0.323,"corr_at_zero":0.313,"leads":false},"divergence":{"state":"IN_LINE","text":"India +16% versus global +6% over 13 weeks \u2014 within the normal range for this pair (+0.5 SD).","gap_now":10.0,"gap_z":0.5,"gap_pct":68.0,"global_13w":6.3,"india_13w":16.3},"india_count":8,"global_count":6,"india_spark":[1748.5,1616.1,1560.5,1474.7,1471.2,1574.4,1509.1,1639.2,1679.1,1588.9,1761.2,1731.0,1773.9,1730.5,1760.6,1818.8,1864.7,1815.6,1816.0,1825.3,1797.3,2031.9,2072.6,1994.2,2069.2,2014.5,2005.4,1891.6,1939.4,1859.3,1737.9,1697.3,1664.3,1689.3,1581.8,1543.6,1687.3,1670.4,1587.7,1494.6,1469.9,1445.1,1613.4,1667.5,1754.0,1688.9,1726.3,1733.2,1729.0,1783.6,1748.4,1866.5,1906.2,1934.4],"global_spark":[2350.3,2307.6,2101.6,2020.2,2099.7,1964.1,1690.5,1804.8,1948.6,2049.1,2232.5,2209.9,2332.8,2396.6,2511.4,2601.4,2569.8,2599.0,2580.2,2512.2,2583.6,2647.9,3045.3,3131.0,3319.6,3376.2,3529.5,3592.4,3396.2,3593.6,3933.7,3627.5,3891.2,4349.6,4680.9,5056.3,4907.8,5018.1,5029.4,4778.2,4783.6,4695.6,5539.8,5701.0,5738.4,6255.2,6065.1,6496.2,6665.4,8246.5,7869.1,6917.4,6866.5,6073.4]},{"id":"nuclear","name":"Nuclear & SMR","tier":3,"status":"WATCHLIST","global":{"level":1930.1699418187113,"d_1m":-0.07245074347013158,"w_3m":-20.497493702578495,"m_12m":-27.429595269173955,"m_36m":396.8044408008303,"above_ma50":false,"above_ma200":false,"from_36m_high":-51.75852486949495,"vol_ann":67.43905977118527},"india":{"level":1153.5877030833567,"d_1m":-3.2878267470415112,"w_3m":-1.2856170151970603,"m_12m":67.08174738751083,"m_36m":160.46388612645802,"above_ma50":false,"above_ma200":true,"from_36m_high":-13.645670956746258,"vol_ann":28.52978796174453},"stage":"BASING","global_stage":"FADING","confluence":68.2,"lag":{"profile":[[0,0.029],[1,0.014],[2,0.012],[3,-0.007],[4,-0.03],[5,-0.044],[6,-0.052],[7,-0.056],[8,-0.052],[9,-0.059],[10,-0.071],[11,-0.081],[12,-0.093],[13,-0.092],[14,-0.087],[15,-0.085],[16,-0.074],[17,-0.062],[18,-0.054],[19,-0.054],[20,-0.048],[21,-0.045],[22,-0.031],[23,-0.008],[24,0.013],[25,0.035],[26,0.049]],"best_lag":26,"best_corr":0.049,"corr_at_zero":0.029,"leads":false},"divergence":{"state":"IN_LINE","text":"India -3% versus global -13% over 13 weeks \u2014 within the normal range for this pair (+0.4 SD).","gap_now":10.1,"gap_z":0.42,"gap_pct":66.0,"global_13w":-12.7,"india_13w":-2.6},"india_count":4,"global_count":5,"india_spark":[714.0,649.3,640.0,582.8,582.8,634.2,619.0,667.0,671.4,648.5,712.8,721.8,771.6,731.8,727.8,710.9,704.4,673.5,680.7,676.9,654.8,665.8,745.1,731.9,746.6,752.2,783.1,764.6,774.2,790.4,752.3,794.6,792.4,804.2,779.1,824.1,902.3,935.8,935.7,880.1,837.0,833.6,1021.1,1074.4,1184.7,1209.2,1239.2,1189.3,1209.9,1302.9,1207.3,1178.1,1118.2,1089.8],"global_spark":[1330.2,1404.8,1136.6,980.2,1103.9,969.1,871.3,974.0,1068.0,1161.3,1395.5,1751.8,1918.0,2154.4,2168.8,2116.8,2388.7,2589.2,2545.6,2202.3,2477.5,2445.0,2848.8,3088.0,3347.4,3659.6,3640.7,3006.7,2544.6,2521.7,2724.1,2254.3,2324.6,2819.0,2904.1,2952.2,2716.9,2444.8,2413.5,2273.4,2099.5,2053.9,2103.5,2298.5,2480.1,2534.9,2130.2,2310.0,1899.6,2214.8,2009.1,1802.5,1845.5,1764.4]},{"id":"energy_storage","name":"Energy Storage & BESS","tier":1,"status":"ACTIVE","global":{"level":2557.8777520954964,"d_1m":-8.222281181315939,"w_3m":-32.834478253332236,"m_12m":57.30074584566793,"m_36m":64.080651765949,"above_ma50":false,"above_ma200":false,"from_36m_high":-38.038272947511246,"vol_ann":57.17116789632094},"india":{"level":6940.822850227501,"d_1m":-1.668100708991349,"w_3m":6.655477107270924,"m_12m":4.903682962850731,"m_36m":168.74942182680917,"above_ma50":true,"above_ma200":true,"from_36m_high":-16.09812956480142,"vol_ann":29.180050426244282},"stage":"EMERGING","global_stage":"BASING","confluence":60.0,"lag":{"profile":[[0,0.172],[1,0.178],[2,0.179],[3,0.167],[4,0.157],[5,0.146],[6,0.127],[7,0.114],[8,0.096],[9,0.076],[10,0.056],[11,0.034],[12,0.021],[13,0.016],[14,0.019],[15,0.029],[16,0.043],[17,0.056],[18,0.07],[19,0.085],[20,0.099],[21,0.109],[22,0.12],[23,0.138],[24,0.152],[25,0.157],[26,0.155]],"best_lag":2,"best_corr":0.179,"corr_at_zero":0.172,"leads":false},"divergence":{"state":"INDIA_AHEAD","text":"India up 8% versus global -28% over 13 weeks, a gap wider than 90% of history (+1.1 SD). India is leading, not catching up.","gap_now":35.6,"gap_z":1.13,"gap_pct":90.0,"global_13w":-27.7,"india_13w":8.0},"india_count":4,"global_count":5,"india_spark":[6748.9,5987.9,5926.9,5417.5,5348.9,5916.0,5947.2,6324.2,6091.2,5826.5,6592.0,6427.1,6968.1,6464.4,6817.7,6796.1,6720.1,6531.2,6533.7,6826.5,6841.9,7259.6,7332.8,6873.6,7074.8,7136.8,7266.4,7251.2,6809.9,6711.6,6426.5,6259.9,6512.2,6302.4,5714.4,5464.2,6098.6,5992.6,5750.7,5386.4,5247.2,5150.8,6108.3,6273.2,6618.1,6505.2,6399.5,6954.2,6725.5,6831.6,7031.8,7017.4,6988.0,6660.0],"global_spark":[1574.4,1417.3,1252.2,1179.0,1270.9,1186.8,939.2,1052.3,1177.7,1231.5,1338.5,1205.9,1195.9,1260.0,1373.0,1494.2,1641.4,1539.5,1683.5,1664.0,1762.7,1632.8,1900.2,2214.9,2515.9,2646.5,2720.5,2759.1,2853.2,3079.9,3263.5,3138.8,3212.4,3469.5,3872.5,4044.1,3420.2,3240.2,2890.9,3013.9,2676.3,2759.6,2805.3,3084.8,3058.3,3966.0,3333.4,3837.7,3179.0,3545.4,3067.2,2717.8,2572.8,2373.5]},{"id":"green_hydrogen","name":"Green Hydrogen & Electrolysers","tier":3,"status":"WATCHLIST","global":{"level":619.2215669503491,"d_1m":-3.7043313026874025,"w_3m":-33.150077728561115,"m_12m":106.66586437040463,"m_36m":63.93190092826935,"above_ma50":false,"above_ma200":false,"from_36m_high":-40.32204830898263,"vol_ann":65.27040378868108},"india":{"level":4062.821809743265,"d_1m":-5.792302462737298,"w_3m":1.5433508278364316,"m_12m":20.618195175951158,"m_36m":87.83606819956134,"above_ma50":false,"above_ma200":true,"from_36m_high":-14.805579938468838,"vol_ann":22.757390077555915},"stage":"EMERGING","global_stage":"BASING","confluence":58.3,"lag":{"profile":[[0,0.243],[1,0.237],[2,0.226],[3,0.216],[4,0.199],[5,0.18],[6,0.165],[7,0.143],[8,0.136],[9,0.12],[10,0.11],[11,0.101],[12,0.099],[13,0.096],[14,0.103],[15,0.111],[16,0.122],[17,0.137],[18,0.157],[19,0.166],[20,0.181],[21,0.182],[22,0.194],[23,0.201],[24,0.203],[25,0.196],[26,0.191]],"best_lag":0,"best_corr":0.243,"corr_at_zero":0.243,"leads":false},"divergence":{"state":"IN_LINE","text":"India +1% versus global -33% over 13 weeks \u2014 within the normal range for this pair (+1.0 SD).","gap_now":34.8,"gap_z":0.98,"gap_pct":85.0,"global_13w":-33.5,"india_13w":1.3},"india_count":4,"global_count":3,"india_spark":[3235.9,2986.5,2972.0,2867.4,3046.5,3267.2,3142.0,3128.4,3048.2,3010.2,3262.2,3286.2,3405.8,3272.3,3323.1,3303.0,3451.1,3346.4,3320.4,3265.1,3153.6,3214.4,3322.7,3342.8,3354.4,3378.9,3493.5,3375.6,3346.6,3298.8,3157.5,3215.1,3257.7,3302.5,3150.0,3042.1,3248.0,3372.6,3329.3,3172.3,3143.1,3169.6,3743.1,3856.1,3999.2,4061.0,4142.6,4260.6,4284.0,4373.4,4396.5,4282.6,4233.8,4085.4],"global_spark":[225.1,198.5,236.8,229.6,198.1,173.0,155.7,153.6,168.1,162.2,160.5,208.8,197.3,228.8,269.9,256.2,275.8,269.6,302.6,308.7,314.9,351.3,395.2,540.6,611.9,524.9,509.4,512.4,446.6,470.3,467.6,438.5,491.8,535.5,576.7,566.3,501.9,523.0,590.9,558.6,563.1,572.7,737.2,788.9,935.1,974.6,1001.7,967.0,782.1,804.7,743.7,629.5,620.0,592.3]},{"id":"specialty_chem","name":"Specialty Chemicals & Advanced Materials","tier":2,"status":"ACTIVE","global":{"level":619.9707234287597,"d_1m":-0.35427862877329686,"w_3m":-11.84108324089841,"m_12m":35.8606037045248,"m_36m":15.662218414720908,"above_ma50":false,"above_ma200":true,"from_36m_high":-14.279907933506774,"vol_ann":24.86315072627526},"india":{"level":12880.326995228043,"d_1m":1.9116561117838549,"w_3m":2.2364140909130636,"m_12m":-6.785580644251487,"m_36m":7.73655017892021,"above_ma50":true,"above_ma200":true,"from_36m_high":-13.084173838762803,"vol_ann":17.73763200966049},"stage":"EMERGING","global_stage":"BASING","confluence":55.9,"lag":{"profile":[[0,0.207],[1,0.211],[2,0.208],[3,0.194],[4,0.189],[5,0.191],[6,0.182],[7,0.19],[8,0.186],[9,0.174],[10,0.161],[11,0.143],[12,0.119],[13,0.11],[14,0.105],[15,0.104],[16,0.106],[17,0.095],[18,0.083],[19,0.083],[20,0.072],[21,0.068],[22,0.073],[23,0.073],[24,0.073],[25,0.08],[26,0.073]],"best_lag":1,"best_corr":0.211,"corr_at_zero":0.207,"leads":false},"divergence":{"state":"IN_LINE","text":"India +2% versus global -9% over 13 weeks \u2014 within the normal range for this pair (+0.3 SD).","gap_now":11.4,"gap_z":0.34,"gap_pct":66.0,"global_13w":-9.1,"india_13w":2.3},"india_count":8,"global_count":3,"india_spark":[13281.3,12965.1,12397.6,11893.8,12403.8,12840.5,12430.3,12960.7,13102.8,12906.1,13581.0,13853.1,13975.5,13990.9,14301.8,14544.3,14526.8,13898.6,13719.0,13266.4,13072.3,13068.1,13515.6,12969.0,12963.5,13210.2,13040.8,13012.7,12888.9,12517.8,12407.7,12507.2,12726.5,12470.0,12249.4,11916.1,12643.8,12168.2,12061.4,11616.4,11263.0,11125.3,11681.5,12169.2,12508.2,12743.4,12507.6,12329.7,12429.4,12758.7,12612.1,12600.2,12952.8,12604.4],"global_spark":[479.8,485.4,472.3,464.1,466.1,450.4,367.9,392.4,411.7,407.3,417.7,412.7,430.6,418.6,433.1,466.8,472.9,453.4,469.2,483.4,495.9,465.0,487.4,486.8,493.2,480.3,486.1,470.6,510.3,523.9,502.1,534.3,550.3,585.0,597.7,615.7,623.1,638.5,656.5,634.0,625.9,666.6,670.2,696.4,702.4,723.2,664.4,653.8,626.0,648.6,644.4,621.2,598.2,585.5]},{"id":"water","name":"Water Treatment & Infrastructure","tier":1,"status":"ACTIVE","global":{"level":803.3758247786459,"d_1m":-2.3383868105239847,"w_3m":0.11723725580192745,"m_12m":-11.06449156169138,"m_36m":1.1806872695156123,"above_ma50":true,"above_ma200":false,"from_36m_high":-16.570460295356604,"vol_ann":17.651306577025657},"india":{"level":4443.881057169446,"d_1m":-3.65785185563664,"w_3m":6.656479472253785,"m_12m":-1.4807747646692127,"m_36m":79.59751465081433,"above_ma50":true,"above_ma200":true,"from_36m_high":-23.17406808848973,"vol_ann":22.44186502335579},"stage":"EMERGING","global_stage":"EMERGING","confluence":55.4,"lag":{"profile":[[0,0.262],[1,0.272],[2,0.274],[3,0.272],[4,0.256],[5,0.237],[6,0.207],[7,0.194],[8,0.177],[9,0.159],[10,0.132],[11,0.098],[12,0.063],[13,0.034],[14,0.016],[15,0.01],[16,0.005],[17,0.008],[18,0.014],[19,0.031],[20,0.035],[21,0.033],[22,0.037],[23,0.049],[24,0.068],[25,0.084],[26,0.086]],"best_lag":2,"best_corr":0.274,"corr_at_zero":0.262,"leads":false},"divergence":{"state":"IN_LINE","text":"India +8% versus global +4% over 13 weeks \u2014 within the normal range for this pair (+0.0 SD).","gap_now":4.3,"gap_z":0.03,"gap_pct":55.0,"global_13w":4.0,"india_13w":8.3},"india_count":12,"global_count":6,"india_spark":[4693.6,4443.4,4409.5,4021.4,4171.7,4422.4,4272.5,4360.3,4331.3,4131.3,4443.5,4634.4,4862.8,4842.5,4864.8,4805.4,4896.8,4626.1,4425.5,4423.1,4364.8,4438.1,4533.6,4282.5,4206.5,4166.5,4121.1,3952.8,3824.1,3740.0,3595.9,3812.2,3766.6,3800.9,3686.2,3565.3,3820.8,3946.9,3813.2,3907.3,3758.6,3670.3,4112.0,4157.8,4227.5,4166.0,4219.1,4190.2,4237.8,4611.7,4582.4,4569.0,4480.9,4484.5],"global_spark":[798.3,808.7,816.4,855.6,853.7,847.5,770.9,827.4,862.1,840.2,865.4,845.8,848.9,835.7,858.2,880.9,878.2,863.0,900.5,915.2,909.0,896.7,903.5,915.0,932.8,951.5,946.8,905.5,895.4,897.8,885.1,894.0,891.5,899.3,890.9,913.9,903.3,926.7,877.7,855.6,821.6,841.2,884.5,854.5,843.8,793.2,779.4,760.7,770.5,795.9,817.4,824.6,800.0,802.2]},{"id":"solar","name":"Solar & Renewables","tier":1,"status":"ACTIVE","global":{"level":3311.3642050392805,"d_1m":-6.355608525762014,"w_3m":-14.48776483642298,"m_12m":29.838931422644933,"m_36m":-13.995234887866093,"above_ma50":false,"above_ma200":false,"from_36m_high":-30.40990088387039,"vol_ann":51.88847473703392},"india":{"level":2208.608270547579,"d_1m":-7.220589024868518,"w_3m":-5.29137319364289,"m_12m":-9.14692173457009,"m_36m":148.76402951736102,"above_ma50":false,"above_ma200":true,"from_36m_high":-25.577454494271635,"vol_ann":24.09273069313666},"stage":"BASING","global_stage":"BASING","confluence":40.9,"lag":{"profile":[[0,0.119],[1,0.104],[2,0.085],[3,0.058],[4,0.036],[5,0.015],[6,-0.006],[7,-0.023],[8,-0.036],[9,-0.048],[10,-0.053],[11,-0.06],[12,-0.062],[13,-0.057],[14,-0.044],[15,-0.021],[16,0.012],[17,0.038],[18,0.063],[19,0.085],[20,0.103],[21,0.111],[22,0.12],[23,0.126],[24,0.134],[25,0.139],[26,0.136]],"best_lag":25,"best_corr":0.139,"corr_at_zero":0.119,"leads":false},"divergence":{"state":"IN_LINE","text":"India -4% versus global -22% over 13 weeks \u2014 within the normal range for this pair (+0.6 SD).","gap_now":18.0,"gap_z":0.56,"gap_pct":72.0,"global_13w":-21.9,"india_13w":-4.0},"india_count":11,"global_count":10,"india_spark":[2345.3,2203.9,2199.6,1962.8,2049.5,2210.9,2160.1,2296.6,2322.4,2193.5,2445.4,2500.4,2523.8,2406.4,2494.0,2473.4,2582.7,2470.7,2417.6,2364.1,2340.3,2372.5,2456.4,2355.1,2360.8,2415.5,2487.8,2438.7,2358.6,2275.9,2136.6,2110.3,2132.5,2052.1,1994.9,1967.1,2036.4,1993.9,1878.5,1816.9,1955.6,1926.9,2205.6,2368.4,2429.4,2328.5,2334.6,2344.3,2340.6,2424.9,2420.8,2371.7,2269.4,2212.8],"global_spark":[2181.2,2237.8,2176.6,2047.7,2098.1,1921.1,1583.6,1720.9,1844.1,1971.4,2311.0,2056.9,2248.6,2126.9,2261.6,2722.6,2692.4,2578.3,2525.2,2976.4,2939.9,2992.6,3094.3,3245.6,3354.6,3422.2,3567.8,3935.8,3777.2,3722.3,3641.9,3610.6,3792.3,3589.0,3645.6,3911.0,4195.2,4023.3,3666.8,3632.1,3590.2,3681.3,3480.2,3349.2,3577.2,3949.8,4043.0,4548.2,3694.5,4001.3,3690.5,3393.4,3330.2,3137.9]},{"id":"recycling","name":"Recycling & Circular Economy","tier":2,"status":"ACTIVE","global":{"level":930.0721829648833,"d_1m":-0.8330992015852634,"w_3m":6.940018488805544,"m_12m":6.37965897548356,"m_36m":64.0055836227313,"above_ma50":true,"above_ma200":true,"from_36m_high":-3.6189932749522646,"vol_ann":18.063429100072785},"india":{"level":598.081100974859,"d_1m":-9.879529198712477,"w_3m":-7.346293879953148,"m_12m":-16.690384528227398,"m_36m":109.56391655555149,"above_ma50":false,"above_ma200":false,"from_36m_high":-37.9573758841011,"vol_ann":31.485598803196467},"stage":"FADING","global_stage":"BASING","confluence":29.9,"lag":{"profile":[[0,0.131],[1,0.124],[2,0.101],[3,0.084],[4,0.091],[5,0.098],[6,0.114],[7,0.142],[8,0.169],[9,0.196],[10,0.232],[11,0.254],[12,0.273],[13,0.313],[14,0.333],[15,0.374],[16,0.407],[17,0.425],[18,0.435],[19,0.437],[20,0.432],[21,0.403],[22,0.375],[23,0.353],[24,0.328],[25,0.29],[26,0.254]],"best_lag":19,"best_corr":0.437,"corr_at_zero":0.131,"leads":true},"divergence":{"state":"IN_LINE","text":"India -6% versus global +3% over 13 weeks \u2014 within the normal range for this pair (-0.7 SD).","gap_now":-9.3,"gap_z":-0.69,"gap_pct":28.0,"global_13w":3.3,"india_13w":-6.0},"india_count":2,"global_count":3,"india_spark":[747.9,698.8,665.6,615.7,610.6,650.5,647.3,690.9,657.8,654.6,753.2,734.1,749.3,697.5,764.5,755.7,735.2,713.3,711.9,700.8,674.1,692.9,694.3,646.5,629.7,624.5,654.6,646.9,621.0,636.9,608.2,676.0,665.9,648.0,645.0,664.9,667.4,639.7,631.6,600.1,556.4,530.3,648.5,634.1,668.9,643.7,631.9,613.1,602.8,645.4,641.4,657.1,633.3,585.9],"global_spark":[833.6,834.4,820.9,789.6,803.7,809.4,763.3,832.9,844.9,868.7,876.0,879.4,869.5,868.6,867.3,856.5,849.3,854.8,870.3,871.2,862.6,842.3,837.1,840.2,839.6,829.1,822.4,752.5,765.6,818.1,816.9,832.1,837.8,838.1,851.0,861.0,893.6,909.4,951.0,925.6,899.3,909.2,919.7,900.8,926.6,867.0,893.4,857.3,899.0,873.4,904.2,947.9,940.4,925.8]}]};
+
+const fmt = (v, d = 1) => v === null || v === undefined ? "—"
+  : v.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
+const signed = (v, d = 1) => (v > 0 ? "+" : "") + fmt(v, d);
+const PULSE_LABELS = {
+  IN_LARGE: "Nifty 50", IN_500: "Nifty 500", US_SP500: "S&P 500",
+  US_NDX: "Nasdaq 100", KOREA: "Kospi", TAIWAN: "Taiwan", JAPAN: "Nikkei",
+  GERMANY: "DAX", CHINA_HK: "Hang Seng", WORLD: "World"
+};
+const SHOW = ["IN_LARGE", "IN_500", "US_SP500", "US_NDX", "KOREA", "TAIWAN", "CHINA_HK"];
+
+/* ------------------------------------------------------------------ header */
+const asOf = new Date(DATA.as_of + "T00:00:00");
+const pretty = asOf.toLocaleDateString("en-GB",
+  { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+document.getElementById("asof").textContent = pretty;
+document.getElementById("subline").textContent =
+  `${DATA.securities} securities · ${DATA.bars.toLocaleString("en-IN")} bars · ${DATA.themes.length} themes`;
+document.getElementById("clock").textContent = "15:32";
+
+document.getElementById("factbar").innerHTML = [
+  [DATA.securities, "securities"],
+  [DATA.bars.toLocaleString("en-IN"), "daily bars"],
+  [DATA.themes.length, "themes"],
+  ["2012–2026", "history"],
+  [pretty, "as of"]
+].map(([v, l]) => `<div class="fact"><b>${v}</b><span>${l}</span></div>`).join("");
+
+/* ------------------------------------------------------------------- pulse */
+const pulseById = Object.fromEntries(DATA.pulse.map(p => [p.label, p]));
+const shown = SHOW.map(k => pulseById[k]).filter(p => p && p.level !== null);
+document.getElementById("pulse").innerHTML = shown.map(p => `
+  <div class="chip">
+    <div class="nm">${PULSE_LABELS[p.label] || p.label}</div>
+    <div class="lv">${fmt(p.level, p.level > 1000 ? 0 : 2)}</div>
+    <div class="ch ${p.d_1m >= 0 ? "pos" : "neg"}">${signed(p.d_1m)}% <span style="color:var(--p-muted)">1m</span></div>
+    <div class="ch ${p.m_12m >= 0 ? "pos" : "neg"}">${signed(p.m_12m)}% <span style="color:var(--p-muted)">1y</span></div>
+  </div>`).join("");
+
+const missing = DATA.pulse.filter(p => p.level === null).length;
+document.getElementById("pulse-note").textContent = missing ? `${missing} awaiting NSE feed` : "";
+
+/* --------------------------------------------------------------- attention */
+const trailing = DATA.themes.filter(t => t.divergence.state === "INDIA_TRAILING");
+const ahead = DATA.themes.filter(t => t.divergence.state === "INDIA_AHEAD");
+const focus = trailing[0] || ahead[0];
+
+if (focus) {
+  const d = focus.divergence;
+  document.getElementById("attention").innerHTML = `
+    <div class="attention">
+      <div class="tag">${d.state === "INDIA_TRAILING" ? "India trailing its global leg" : "India ahead of its global leg"}</div>
+      <h3>${focus.name}</h3>
+      <p>${d.text}</p>
+      <div class="legs">
+        <span><span class="legdot" style="background:var(--p-global)"></span>global ${signed(d.global_13w, 0)}%</span>
+        <span><span class="legdot" style="background:var(--p-india)"></span>india ${signed(d.india_13w, 0)}%</span>
+        <span style="color:var(--p-muted)">13&#8209;week</span>
+      </div>
+    </div>`;
+}
+
+/* ------------------------------------------------------------- sparklines */
+function spark(indiaArr, globalArr, w = 74, h = 24) {
+  const norm = a => { const b = a[0]; return b ? a.map(v => (v / b) * 100) : a; };
+  const i = norm(indiaArr), g = norm(globalArr);
+  const all = i.concat(g);
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const span = (hi - lo) || 1;
+  const pts = a => a.map((v, n) =>
+    `${(n / (a.length - 1) * w).toFixed(1)},${(h - ((v - lo) / span) * h).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <polyline points="${pts(g)}" fill="none" stroke="var(--p-global)" stroke-width="1.2" opacity=".85"/>
+    <polyline points="${pts(i)}" fill="none" stroke="var(--p-india)" stroke-width="1.5"/>
+    <circle cx="${w}" cy="${(h - ((i[i.length - 1] - lo) / span) * h).toFixed(1)}" r="1.8" fill="var(--p-india)"/>
+  </svg>`;
+}
+
+/* --------------------------------------------------------------- the board */
+const DIVERGENCE_SHORT = {
+  INDIA_TRAILING: "india behind", INDIA_AHEAD: "india ahead", IN_LINE: "in line",
+  INSUFFICIENT_DATA: "no data"
+};
+document.getElementById("board").innerHTML = DATA.themes.map(t => {
+  const d = t.divergence;
+  const tone = d.state === "INDIA_TRAILING" ? "var(--p-india)"
+    : d.state === "INDIA_AHEAD" ? "var(--p-global)" : "var(--p-muted)";
+  return `
+    <div class="trow">
+      <div>
+        <div class="tname">${t.name}</div>
+        <div class="tmeta">
+          <span class="pill st-${t.stage}">${t.stage}</span>
+          <span style="color:${tone}">${DIVERGENCE_SHORT[d.state] || ""} ${d.gap_z !== undefined ? (d.gap_z > 0 ? "+" : "") + d.gap_z : ""}</span>
+          <span>T${t.tier}</span>
+        </div>
+      </div>
+      <div>${spark(t.india_spark, t.global_spark)}</div>
+      <div class="conf">
+        ${t.confluence.toFixed(0)}
+        <div class="confbar"><i style="width:${t.confluence}%"></i></div>
+      </div>
+    </div>`;
+}).join("");
+</script>

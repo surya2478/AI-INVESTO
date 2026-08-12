@@ -1,0 +1,618 @@
+<title>AI-Investo — Home screen preview</title>
+<style>
+  /* ---------------------------------------------------------------- tokens */
+  /* Bare :root carries the complete LIGHT palette for the review page. */
+  :root {
+    --ground:  #EFF3F3;
+    --surface: #FFFFFF;
+    --raised:  #F5F8F8;
+    --ink:     #0E1A1F;
+    --ink-dim: #40565D;
+    --muted:   #63797F;
+    --line:    #D6E1E2;
+    --accent:  #B36F0E;
+
+    /* The phone screen commits to one dark identity in every theme -- it is a
+       product surface with its own look, not a reflection of the host page.
+       Defined unconditionally so it can never resolve to nothing. */
+    --p-ground:  #0B1317;
+    --p-surface: #121D22;
+    --p-raised:  #18272F;
+    --p-ink:     #E6EEEF;
+    --p-muted:   #7B959C;
+    --p-line:    #22343B;
+    --p-india:   #E9A23B;
+    --p-global:  #5FA8C7;
+    --p-pos:     #4FB286;
+    --p-neg:     #D2695A;
+    --p-warn:    #E4C25C;
+
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      /* Deliberately darker than --p-ground so the phone reads as a device
+         sitting on the page rather than dissolving into it. */
+      --ground:  #060D10;
+      --surface: #101A1F;
+      --raised:  #17252B;
+      --ink:     #E6EEEF;
+      --ink-dim: #A9BEC3;
+      --muted:   #7B959C;
+      --line:    #223339;
+      --accent:  #E9A23B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:  #0B1317;
+    --surface: #111C21;
+    --raised:  #17252B;
+    --ink:     #E6EEEF;
+    --ink-dim: #A9BEC3;
+    --muted:   #7B959C;
+    --line:    #223339;
+    --accent:  #E9A23B;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  /* ------------------------------------------------------------- masthead */
+  .masthead { display: flex; flex-direction: column; gap: 14px; margin-bottom: 44px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .masthead h1 {
+    margin: 0; font-size: clamp(30px, 5vw, 46px); line-height: 1.05;
+    letter-spacing: -0.03em; font-weight: 650; text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 62ch; color: var(--ink-dim); font-size: 17px; }
+
+  .factbar {
+    display: flex; flex-wrap: wrap; gap: 0; margin-top: 10px;
+    border: 1px solid var(--line); border-radius: 3px; overflow: hidden;
+    background: var(--surface); width: fit-content;
+  }
+  .fact { padding: 9px 16px; border-right: 1px solid var(--line); }
+  .fact:last-child { border-right: 0; }
+  .fact b {
+    display: block; font-family: var(--mono); font-size: 15px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .fact span {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  /* --------------------------------------------------------------- layout */
+  .layout { display: grid; grid-template-columns: 390px 1fr; gap: 56px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; gap: 40px; } }
+
+  .phone-col { position: sticky; top: 32px; }
+  @media (max-width: 900px) { .phone-col { position: static; } }
+
+  /* ---------------------------------------------------------------- phone */
+  .phone {
+    width: 390px; max-width: 100%; height: 812px;
+    background: var(--p-ground); border-radius: 38px;
+    border: 1px solid #2B3E46;
+    box-shadow: 0 1px 0 #35505A inset, 0 24px 60px rgba(0,0,0,.34);
+    overflow: hidden; display: flex; flex-direction: column;
+    color: var(--p-ink);
+  }
+  .screen { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+  .screen::-webkit-scrollbar { width: 0; }
+
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 26px 4px; font-family: var(--mono); font-size: 12px;
+    color: var(--p-ink); font-variant-numeric: tabular-nums;
+  }
+  .statusbar .glyphs { display: flex; gap: 5px; align-items: center; }
+  .bar { width: 3px; border-radius: 1px; background: var(--p-ink); }
+
+  .apphead { padding: 14px 20px 10px; }
+  .apphead .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .wordmark {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--p-india);
+  }
+  .asof { font-family: var(--mono); font-size: 10.5px; color: var(--p-muted); }
+  .apphead h2 {
+    margin: 6px 0 2px; font-size: 27px; letter-spacing: -0.025em; font-weight: 650;
+  }
+  .subline { font-family: var(--mono); font-size: 10.5px; color: var(--p-muted); }
+
+  .band-label {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 20px; margin: 20px 0 9px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+
+  /* pulse */
+  .pulse { display: flex; gap: 8px; overflow-x: auto; padding: 0 20px 4px; }
+  .pulse::-webkit-scrollbar { height: 0; }
+  .chip {
+    flex: 0 0 auto; min-width: 108px; padding: 9px 11px;
+    background: var(--p-surface); border: 1px solid var(--p-line); border-radius: 4px;
+  }
+  .chip .nm {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .chip .lv {
+    font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums;
+    margin-top: 3px; letter-spacing: -0.02em;
+  }
+  .chip .ch { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--p-pos); }
+  .neg { color: var(--p-neg); }
+
+  /* attention card */
+  .attention {
+    margin: 0 20px; padding: 13px 14px; border-radius: 5px;
+    background: var(--p-surface);
+    border: 1px solid var(--p-line); border-left: 2px solid var(--p-india);
+  }
+  .attention .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--p-india);
+  }
+  .attention h3 { margin: 7px 0 5px; font-size: 15.5px; letter-spacing: -0.015em; font-weight: 620; }
+  .attention p { margin: 0; font-size: 12.5px; line-height: 1.5; color: #C3D3D6; }
+  .attention .legs {
+    display: flex; gap: 16px; margin-top: 10px; padding-top: 9px;
+    border-top: 1px solid var(--p-line);
+    font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums;
+  }
+  .legdot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+  /* theme board */
+  .board { padding: 0 20px; display: flex; flex-direction: column; gap: 1px; }
+  .trow {
+    display: grid; grid-template-columns: 1fr 76px 40px;
+    gap: 10px; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--p-line);
+  }
+  .trow:last-child { border-bottom: 0; }
+  .tname { font-size: 13.5px; font-weight: 560; letter-spacing: -0.01em; }
+  .tmeta {
+    display: flex; align-items: center; gap: 6px; margin-top: 4px;
+    font-family: var(--mono); font-size: 9.5px; color: var(--p-muted);
+  }
+  .pill {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 2px 5px; border-radius: 2px;
+    border: 1px solid currentColor;
+  }
+  .st-ACCELERATING { color: var(--p-pos); }
+  .st-EMERGING     { color: var(--p-india); }
+  .st-BASING       { color: var(--p-muted); }
+  .st-CROWDED      { color: var(--p-warn); }
+  .st-FADING       { color: var(--p-neg); }
+
+  .conf { text-align: right; font-family: var(--mono); font-size: 12px;
+          font-variant-numeric: tabular-nums; }
+  .confbar { height: 2px; background: var(--p-line); border-radius: 1px; margin-top: 4px; }
+  .confbar i { display: block; height: 100%; background: var(--p-ink); border-radius: 1px; }
+
+  /* gems pending */
+  .pending {
+    margin: 0 20px; padding: 14px; border-radius: 5px;
+    border: 1px dashed var(--p-line); background: transparent;
+  }
+  .pending .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .pending p { margin: 7px 0 0; font-size: 12.5px; color: #A9BEC3; line-height: 1.5; }
+
+  .disclaimer {
+    margin: 18px 20px 0; padding-top: 12px; border-top: 1px solid var(--p-line);
+    font-family: var(--mono); font-size: 9.5px; line-height: 1.6; color: var(--p-muted);
+  }
+
+  /* tab bar */
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    border-top: 1px solid var(--p-line); background: var(--p-surface);
+    padding: 9px 0 22px;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .tab.on { color: var(--p-india); }
+  .tab svg { width: 17px; height: 17px; }
+
+  /* ---------------------------------------------------------------- notes */
+  .notes { display: flex; flex-direction: column; gap: 30px; }
+  .note { display: flex; gap: 14px; }
+  .note .marker {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid var(--line); display: grid; place-items: center;
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    background: var(--surface);
+  }
+  .note h3 { margin: 2px 0 6px; font-size: 16.5px; letter-spacing: -0.015em; font-weight: 620; }
+  .note p { margin: 0; color: var(--ink-dim); font-size: 14.5px; max-width: 58ch; }
+  .note p + p { margin-top: 9px; }
+  .note code {
+    font-family: var(--mono); font-size: 13px; background: var(--raised);
+    padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line);
+  }
+
+  .callout {
+    margin-top: 8px; padding: 16px 18px; border-radius: 4px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 2px solid var(--accent);
+  }
+  .callout h3 { margin: 0 0 7px; font-size: 16px; letter-spacing: -0.015em; }
+  .callout p { margin: 0; font-size: 14.5px; color: var(--ink-dim); }
+  .callout p + p { margin-top: 9px; }
+
+  /* status table */
+  .status { margin-top: 64px; }
+  .status h2 {
+    font-size: 22px; letter-spacing: -0.02em; margin: 0 0 4px; font-weight: 640;
+  }
+  .status > p { margin: 0 0 18px; color: var(--ink-dim); max-width: 62ch; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-family: var(--mono); font-size: 13px; }
+  .yes { color: #1E7F58; font-family: var(--mono); font-size: 12.5px; }
+  .no  { color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .yes { color: #4FB286; }
+  }
+  :root[data-theme="dark"] .yes { color: #4FB286; }
+
+  footer {
+    margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--muted); max-width: 70ch;
+  }
+
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">Design review · before we build</div>
+    <h1>The home screen</h1>
+    <p class="lede">
+      Every figure on this screen is computed from the price history already in
+      the database — no placeholder numbers. Where a feature needs data we have
+      not ingested yet, the screen says so rather than inventing a value.
+    </p>
+    <div class="factbar" id="factbar"></div>
+  </header>
+
+  <div class="layout">
+    <div class="phone-col">
+      <div class="phone">
+        <div class="screen">
+          <div class="statusbar">
+            <span id="clock">9:41</span>
+            <span class="glyphs">
+              <span class="bar" style="height:5px"></span>
+              <span class="bar" style="height:7px"></span>
+              <span class="bar" style="height:9px"></span>
+              <span class="bar" style="height:11px"></span>
+              <span style="margin-left:4px">100%</span>
+            </span>
+          </div>
+
+          <div class="apphead">
+            <div class="row">
+              <span class="wordmark">AI-Investo</span>
+              <span class="asof" id="asof"></span>
+            </div>
+            <h2>Today</h2>
+            <div class="subline" id="subline"></div>
+          </div>
+
+          <div class="band-label"><span>Market pulse</span><span id="pulse-note"></span></div>
+          <div class="pulse" id="pulse"></div>
+
+          <div class="band-label"><span>Worth a look</span></div>
+          <div id="attention"></div>
+
+          <div class="band-label"><span>Theme board</span><span>14 themes</span></div>
+          <div class="board" id="board"></div>
+
+          <div class="band-label"><span>Gems</span></div>
+          <div class="pending">
+            <div class="tag">No scores yet</div>
+            <p>
+              G.E.M. scoring needs reported financials with filing dates. Those
+              arrive from NSE/BSE XBRL at Stage&nbsp;2. Ranking stocks on price
+              action alone would just be a momentum screen wearing a different name.
+            </p>
+          </div>
+
+          <div class="disclaimer">
+            Research tool. Ranks and explains — does not advise.
+            Every decision is yours.
+          </div>
+          <div style="height:20px"></div>
+        </div>
+
+        <nav class="tabbar">
+          <span class="tab on">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+            Today
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 4 5-8 4 5"/></svg>
+            Themes
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l3 6 6 .8-4.5 4.2 1.2 6-5.7-3.2L6.3 20l1.2-6L3 9.8 9 9z"/></svg>
+            Gems
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18v13H3z"/><path d="M8 7V4h8v3"/></svg>
+            Folio
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h7M9 13h7M9 17h4"/></svg>
+            Journal
+          </span>
+        </nav>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="callout">
+        <h3>One thing changed from the approved spec</h3>
+        <p>
+          The spec's headline feature was a <em>propagation lag</em> — "global fired
+          eight weeks ago, India hasn't yet." I built it, measured it across all 14
+          themes on 2012–2026 history, and it does not exist. Correlation decays
+          monotonically from lag zero: <code>ai_compute</code> runs 0.48 → 0.39 →
+          0.27 → 0.12 across 0/4/8/12 weeks. India's legs move <em>with</em> their
+          global counterparts, not behind them.
+        </p>
+        <p>
+          So the screen shows <strong>divergence</strong> instead: how far India's leg
+          has drifted from its global leg versus that pair's own history. Because the
+          legs correlate only loosely (peak r ≈ 0.2–0.5), the gap between them moves a
+          lot — which makes it measurable in a way a fixed lag never was. Whether wide
+          gaps actually close is a Stage&nbsp;3 backtest question, and the copy is
+          written as observation, not prediction.
+        </p>
+      </div>
+
+      <div class="note">
+        <span class="marker">1</span>
+        <div>
+          <h3>Market pulse</h3>
+          <p>
+            Real closes as of 10 Aug 2026. Korea at −13.6% over a month next to
+            +95.8% over a year is exactly the kind of thing a single number would
+            hide, so each chip carries both horizons.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">2</span>
+        <div>
+          <h3>Worth a look</h3>
+          <p>
+            One card, not five. The screen surfaces the single strongest reading and
+            states the arithmetic behind it — percentile, standard deviations, both
+            legs — so you can disagree with it. A signal you cannot audit is a signal
+            you should not act on.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">3</span>
+        <div>
+          <h3>Two colours, one meaning</h3>
+          <p>
+            Marigold is always India, cyan is always global — in the sparklines, the
+            legend, everywhere. The two-leg structure is the core of the data model,
+            so it gets the colour system rather than the decoration.
+          </p>
+          <p>
+            Each sparkline rebases both legs to 100 at the start of an 18-month window
+            on a shared scale, so the gap between the lines <em>is</em> the divergence
+            the card describes.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">4</span>
+        <div>
+          <h3>Stage, then strength</h3>
+          <p>
+            Stage answers "where in its life is this theme"; confluence answers "how
+            aligned are daily, weekly and monthly". Ordering matters in the classifier —
+            <code>CROWDED</code> is tested before <code>ACCELERATING</code>, so a theme
+            that has already run hard is never dressed up as a fresh entry.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="marker">5</span>
+        <div>
+          <h3>The empty Gems tab is the point</h3>
+          <p>
+            It would be easy to rank these 208 names on price momentum today and call
+            it a score. That would be a momentum screen with a better logo. The tab
+            stays empty until fundamentals with real filing dates land at Stage&nbsp;2.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="status">
+    <h2>What is real on this screen</h2>
+    <p>
+      Worth being precise about, since a mockup that quietly mixes computed and
+      invented numbers is worse than no mockup.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Element</th><th>Status</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Market pulse</td><td class="yes">computed</td><td>626,937 ingested daily bars</td></tr>
+          <tr><td>Theme indices</td><td class="yes">computed</td><td>equal-weight baskets, 208 validated tickers</td></tr>
+          <tr><td>Sparklines</td><td class="yes">computed</td><td>18 months, both legs rebased to 100</td></tr>
+          <tr><td>Stage + confluence</td><td class="yes">computed</td><td>daily/weekly/monthly momentum</td></tr>
+          <tr><td>Divergence + percentile</td><td class="yes">computed</td><td>13-week momentum gap vs own history</td></tr>
+          <tr><td>G.E.M. scores</td><td class="no">stage 2</td><td>needs XBRL fundamentals with filing dates</td></tr>
+          <tr><td>Quality gates</td><td class="no">stage 2</td><td>needs pledge, cash-flow, ownership data</td></tr>
+          <tr><td>Portfolio + journal</td><td class="no">stage 5</td><td>no holdings entered yet</td></tr>
+          <tr><td>Thresholds behind stages</td><td class="no">stage 3</td><td>reasoned defaults, not yet calibrated</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Personal research tool. Not investment advice, and not a recommendation to buy
+    or sell any security. Theme membership is hand-authored in
+    <code>config/themes.yaml</code> and reflects one reading of each value chain —
+    it is a starting point for your judgement, not a substitute for it.
+  </footer>
+</div>
+
+<script>
+const DATA = __DATA__;
+
+const fmt = (v, d = 1) => v === null || v === undefined ? "—"
+  : v.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
+const signed = (v, d = 1) => (v > 0 ? "+" : "") + fmt(v, d);
+const PULSE_LABELS = {
+  IN_LARGE: "Nifty 50", IN_500: "Nifty 500", US_SP500: "S&P 500",
+  US_NDX: "Nasdaq 100", KOREA: "Kospi", TAIWAN: "Taiwan", JAPAN: "Nikkei",
+  GERMANY: "DAX", CHINA_HK: "Hang Seng", WORLD: "World"
+};
+const SHOW = ["IN_LARGE", "IN_500", "US_SP500", "US_NDX", "KOREA", "TAIWAN", "CHINA_HK"];
+
+/* ------------------------------------------------------------------ header */
+const asOf = new Date(DATA.as_of + "T00:00:00");
+const pretty = asOf.toLocaleDateString("en-GB",
+  { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+document.getElementById("asof").textContent = pretty;
+document.getElementById("subline").textContent =
+  `${DATA.securities} securities · ${DATA.bars.toLocaleString("en-IN")} bars · ${DATA.themes.length} themes`;
+document.getElementById("clock").textContent = "15:32";
+
+document.getElementById("factbar").innerHTML = [
+  [DATA.securities, "securities"],
+  [DATA.bars.toLocaleString("en-IN"), "daily bars"],
+  [DATA.themes.length, "themes"],
+  ["2012–2026", "history"],
+  [pretty, "as of"]
+].map(([v, l]) => `<div class="fact"><b>${v}</b><span>${l}</span></div>`).join("");
+
+/* ------------------------------------------------------------------- pulse */
+const pulseById = Object.fromEntries(DATA.pulse.map(p => [p.label, p]));
+const shown = SHOW.map(k => pulseById[k]).filter(p => p && p.level !== null);
+document.getElementById("pulse").innerHTML = shown.map(p => `
+  <div class="chip">
+    <div class="nm">${PULSE_LABELS[p.label] || p.label}</div>
+    <div class="lv">${fmt(p.level, p.level > 1000 ? 0 : 2)}</div>
+    <div class="ch ${p.d_1m >= 0 ? "pos" : "neg"}">${signed(p.d_1m)}% <span style="color:var(--p-muted)">1m</span></div>
+    <div class="ch ${p.m_12m >= 0 ? "pos" : "neg"}">${signed(p.m_12m)}% <span style="color:var(--p-muted)">1y</span></div>
+  </div>`).join("");
+
+const missing = DATA.pulse.filter(p => p.level === null).length;
+document.getElementById("pulse-note").textContent = missing ? `${missing} awaiting NSE feed` : "";
+
+/* --------------------------------------------------------------- attention */
+const trailing = DATA.themes.filter(t => t.divergence.state === "INDIA_TRAILING");
+const ahead = DATA.themes.filter(t => t.divergence.state === "INDIA_AHEAD");
+const focus = trailing[0] || ahead[0];
+
+if (focus) {
+  const d = focus.divergence;
+  document.getElementById("attention").innerHTML = `
+    <div class="attention">
+      <div class="tag">${d.state === "INDIA_TRAILING" ? "India trailing its global leg" : "India ahead of its global leg"}</div>
+      <h3>${focus.name}</h3>
+      <p>${d.text}</p>
+      <div class="legs">
+        <span><span class="legdot" style="background:var(--p-global)"></span>global ${signed(d.global_13w, 0)}%</span>
+        <span><span class="legdot" style="background:var(--p-india)"></span>india ${signed(d.india_13w, 0)}%</span>
+        <span style="color:var(--p-muted)">13&#8209;week</span>
+      </div>
+    </div>`;
+}
+
+/* ------------------------------------------------------------- sparklines */
+function spark(indiaArr, globalArr, w = 74, h = 24) {
+  const norm = a => { const b = a[0]; return b ? a.map(v => (v / b) * 100) : a; };
+  const i = norm(indiaArr), g = norm(globalArr);
+  const all = i.concat(g);
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const span = (hi - lo) || 1;
+  const pts = a => a.map((v, n) =>
+    `${(n / (a.length - 1) * w).toFixed(1)},${(h - ((v - lo) / span) * h).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <polyline points="${pts(g)}" fill="none" stroke="var(--p-global)" stroke-width="1.2" opacity=".85"/>
+    <polyline points="${pts(i)}" fill="none" stroke="var(--p-india)" stroke-width="1.5"/>
+    <circle cx="${w}" cy="${(h - ((i[i.length - 1] - lo) / span) * h).toFixed(1)}" r="1.8" fill="var(--p-india)"/>
+  </svg>`;
+}
+
+/* --------------------------------------------------------------- the board */
+const DIVERGENCE_SHORT = {
+  INDIA_TRAILING: "india behind", INDIA_AHEAD: "india ahead", IN_LINE: "in line",
+  INSUFFICIENT_DATA: "no data"
+};
+document.getElementById("board").innerHTML = DATA.themes.map(t => {
+  const d = t.divergence;
+  const tone = d.state === "INDIA_TRAILING" ? "var(--p-india)"
+    : d.state === "INDIA_AHEAD" ? "var(--p-global)" : "var(--p-muted)";
+  return `
+    <div class="trow">
+      <div>
+        <div class="tname">${t.name}</div>
+        <div class="tmeta">
+          <span class="pill st-${t.stage}">${t.stage}</span>
+          <span style="color:${tone}">${DIVERGENCE_SHORT[d.state] || ""} ${d.gap_z !== undefined ? (d.gap_z > 0 ? "+" : "") + d.gap_z : ""}</span>
+          <span>T${t.tier}</span>
+        </div>
+      </div>
+      <div>${spark(t.india_spark, t.global_spark)}</div>
+      <div class="conf">
+        ${t.confluence.toFixed(0)}
+        <div class="confbar"><i style="width:${t.confluence}%"></i></div>
+      </div>
+    </div>`;
+}).join("");
+</script>
