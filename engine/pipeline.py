@@ -240,6 +240,70 @@ def ingest_prices(
         con.close()
 
 
+@ingest_app.command("fundamentals")
+def ingest_fundamentals(
+    limit: int = typer.Option(0, help="Cap the number of symbols (0 = all)"),
+    max_filings: int = typer.Option(12, help="Filings per company (~3 years of quarters)"),
+    themes_only: bool = typer.Option(
+        True, help="Restrict to Indian theme-graph names rather than the full universe"
+    ),
+) -> None:
+    """Pull quarterly financials with true filing dates from NSE XBRL."""
+    from engine.fundamentals import coverage_report, pit_selftest, sync_fundamentals
+    from engine.universe.builder import investable_universe
+
+    run_id = _run_id()
+    graph = load_theme_graph()
+    con = db.connect()
+
+    try:
+        if themes_only:
+            tickers = graph.india_universe()
+        else:
+            tickers = investable_universe(con)
+        symbols = [t.removesuffix(".NS") for t in tickers if t.endswith(".NS")]
+        if limit:
+            symbols = symbols[:limit]
+
+        console.print(f"fetching financials for [bold]{len(symbols)}[/bold] companies "
+                      f"({max_filings} filings each)...")
+        started = dt.datetime.now()
+        result = sync_fundamentals(con, symbols, max_filings=max_filings)
+
+        console.print(f"[green]{result['written']:,} facts[/green] from "
+                      f"{len(result['ok'])} companies")
+        if result["empty"]:
+            console.print(f"[yellow]{len(result['empty'])} returned nothing[/yellow]: "
+                          + ", ".join(result["empty"][:10]))
+        if result["failed"]:
+            console.print(f"[red]{len(result['failed'])} failed[/red]")
+            for symbol, reason in result["failed"][:10]:
+                console.print(f"  {symbol:<14} {reason}")
+
+        cov = coverage_report(con)
+        table = Table(title="Fundamentals coverage")
+        for col in ("metric", "companies", "facts", "earliest", "latest"):
+            table.add_column(col, justify="right" if col != "metric" else "left")
+        for _, r in cov.head(20).iterrows():
+            table.add_row(str(r.metric), f"{int(r.companies):,}", f"{int(r.facts):,}",
+                          str(r.earliest)[:10], str(r.latest)[:10])
+        console.print(table)
+
+        check = pit_selftest(con)
+        style = "green" if check["passed"] else "red"
+        console.print(
+            f"\n[{style}]point-in-time guard: "
+            f"{'PASS' if check['passed'] else 'FAIL'}[/{style}] — "
+            f"{check['facts_filed_after']:,} facts were filed after "
+            f"{check['as_of']}, and {check['leaked']} leaked into the as-of view"
+        )
+
+        db.log_ingest(con, run_id, "fundamentals", None, "OK", result["written"],
+                      f"{len(result['ok'])} companies", started)
+    finally:
+        con.close()
+
+
 # ------------------------------------------------------------------ coverage
 @app.command()
 def coverage() -> None:
