@@ -138,6 +138,23 @@ CREATE TABLE IF NOT EXISTS flows (
     PRIMARY KEY (date, category)
 );
 
+-- BSE identity, added after the fact so existing databases migrate in place.
+ALTER TABLE securities ADD COLUMN IF NOT EXISTS bse_scripcode VARCHAR;
+
+-- When a company's results for a period actually became public. This is the
+-- source of `fundamentals_pit.filing_date` for anything extracted from PDFs,
+-- where the document itself carries no dissemination timestamp.
+CREATE TABLE IF NOT EXISTS filing_events (
+    security_id  BIGINT  NOT NULL,
+    period_end   DATE    NOT NULL,
+    filing_date  DATE    NOT NULL,
+    filing_ts    TIMESTAMP,
+    event_type   VARCHAR,            -- RESULT
+    subject      VARCHAR,
+    source       VARCHAR,
+    PRIMARY KEY (security_id, period_end, filing_date)
+);
+
 -- ---------------------------------------------------------------- theme graph
 CREATE TABLE IF NOT EXISTS themes (
     theme_id     VARCHAR PRIMARY KEY,

@@ -209,6 +209,71 @@ def sync_flows(con, provider: NSEProvider) -> int:
     return len(flows)
 
 
+def sync_bse_identity(con, provider=None) -> int:
+    """Attach BSE scrip codes and market caps to securities, joined on ISIN.
+
+    ISIN is the only safe join: BSE scrip codes cannot be inferred from an NSE
+    symbol, and guessing one silently attaches another company's financials.
+    """
+    from engine.providers.bse_provider import BSEProvider
+
+    provider = provider or BSEProvider()
+    master = provider.fetch_scrip_master()
+    if master.empty:
+        return 0
+
+    con.register("staged_bse", master)
+    con.execute("""
+        UPDATE securities s
+           SET bse_scripcode = b.scripcode,
+               market_cap    = coalesce(b.market_cap, s.market_cap),
+               updated_at    = current_timestamp
+          FROM staged_bse b
+         WHERE s.isin = b.isin
+    """)
+    matched = con.execute("""
+        SELECT count(*) FROM securities s
+          JOIN staged_bse b ON s.isin = b.isin
+    """).fetchone()[0]
+    con.unregister("staged_bse")
+    return int(matched)
+
+
+def sync_filing_dates(con, start: dt.date, end: dt.date, provider=None) -> dict:
+    """Record when result announcements were disseminated, per company and period."""
+    from engine.providers.bse_provider import BSEProvider
+
+    provider = provider or BSEProvider()
+    announcements = provider.fetch_result_announcements_range(start, end)
+    if announcements.empty:
+        return {"fetched": 0, "stored": 0, "unparsed": 0}
+
+    unparsed = int(announcements["period_end"].isna().sum())
+    usable = announcements.dropna(subset=["period_end"]).copy()
+    if usable.empty:
+        return {"fetched": len(announcements), "stored": 0, "unparsed": unparsed}
+
+    con.register("staged_ann", usable)
+    con.execute("""
+        INSERT INTO filing_events
+            (security_id, period_end, filing_date, filing_ts, event_type, subject, source)
+        SELECT s.security_id, a.period_end, a.filing_date, a.filing_ts,
+               'RESULT', a.subject, 'bse'
+          FROM staged_ann a
+          JOIN securities s ON s.bse_scripcode = a.scripcode
+         WHERE NOT EXISTS (
+               SELECT 1 FROM filing_events e
+                WHERE e.security_id = s.security_id
+                  AND e.period_end  = a.period_end
+                  AND e.filing_date = a.filing_date
+         )
+    """)
+    stored = con.execute("SELECT count(*) FROM filing_events").fetchone()[0]
+    con.unregister("staged_ann")
+
+    return {"fetched": len(announcements), "stored": int(stored), "unparsed": unparsed}
+
+
 def investable_universe(
     con, index_name: str = "NIFTY TOTAL MARKET", include_microcap: bool = True
 ) -> list[str]:

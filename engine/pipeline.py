@@ -304,6 +304,114 @@ def ingest_fundamentals(
         con.close()
 
 
+@ingest_app.command("filings")
+def ingest_filings(
+    months: int = typer.Option(30, help="How far back to walk result announcements"),
+) -> None:
+    """Record when results were published -- the filing_date PDFs cannot supply."""
+    from engine.universe import builder
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        started = dt.datetime.now()
+        console.print("matching BSE scrip codes on ISIN...")
+        matched = builder.sync_bse_identity(con)
+        console.print(f"  [green]{matched:,}[/green] securities matched to BSE")
+
+        end = dt.date.today() - dt.timedelta(days=1)
+        start = end - dt.timedelta(days=int(months * 30.44))
+        console.print(f"walking result announcements {start} to {end}...")
+        result = builder.sync_filing_dates(con, start, end)
+
+        console.print(f"  fetched [bold]{result['fetched']:,}[/bold] announcements, "
+                      f"[green]{result['stored']:,}[/green] filing events stored")
+        if result["unparsed"]:
+            console.print(f"  [yellow]{result['unparsed']:,} had no parseable period[/yellow] "
+                          "(not quarterly results -- ignored rather than guessed)")
+
+        summary = con.execute("""
+            SELECT count(DISTINCT security_id) AS companies,
+                   count(*)                    AS events,
+                   min(period_end)             AS earliest,
+                   max(period_end)             AS latest
+              FROM filing_events
+        """).df()
+        if not summary.empty and int(summary.events.iloc[0]):
+            r = summary.iloc[0]
+            console.print(f"\n[bold]{int(r.events):,} filing events[/bold] across "
+                          f"{int(r.companies):,} companies, "
+                          f"periods {str(r.earliest)[:10]} to {str(r.latest)[:10]}")
+
+        db.log_ingest(con, run_id, "filings", None, "OK", result["stored"],
+                      f"{start}..{end}", started)
+    finally:
+        con.close()
+
+
+@app.command()
+def gates(
+    limit: int = typer.Option(0, help="Cap companies evaluated (0 = all)"),
+    show: int = typer.Option(15, help="Rows of detail to print"),
+) -> None:
+    """Run the quality gates and report what each one rejected."""
+    from engine.scoring import gates as gate_engine
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        started = dt.datetime.now()
+        as_of = dt.date.today()
+        console.print(f"evaluating {len(gate_engine.GATES)} gates as of {as_of}...")
+        frame = gate_engine.run_gates(con, as_of=as_of, limit=limit)
+
+        if frame.empty:
+            console.print("[yellow]no securities to evaluate[/yellow]")
+            return
+
+        summary = gate_engine.gate_summary(frame)
+        table = Table(title="Gate outcomes")
+        table.add_column("gate", style="cyan")
+        for col in ("pass", "fail", "unknown"):
+            table.add_column(col, justify="right")
+        for gate_name, row in summary.iterrows():
+            critical = gate_name in gate_engine.CRITICAL
+            table.add_row(
+                f"{gate_name}{' *' if critical else ''}",
+                f"[green]{int(row['PASS'])}[/green]",
+                f"[red]{int(row['FAIL'])}[/red]" if row["FAIL"] else "0",
+                f"[yellow]{int(row['UNKNOWN'])}[/yellow]" if row["UNKNOWN"] else "0",
+            )
+        console.print(table)
+        console.print("[dim]* failing a starred gate rejects the name outright[/dim]")
+
+        verdict = gate_engine.verdicts(frame)
+        counts = verdict.verdict.value_counts().to_dict()
+        console.print(
+            f"\n[red]{counts.get('REJECTED', 0)} rejected[/red] · "
+            f"[yellow]{counts.get('FLAGGED', 0)} flagged[/yellow] · "
+            f"[yellow]{counts.get('UNVETTED', 0)} unvetted[/yellow] · "
+            f"[green]{counts.get('CLEARED', 0)} cleared[/green] "
+            f"of {len(verdict):,} companies"
+        )
+
+        rejected = verdict[verdict.verdict == "REJECTED"].head(show)
+        if not rejected.empty:
+            console.print("\n[bold]rejected[/bold] (reason shown to you in the app):")
+            for _, r in rejected.iterrows():
+                console.print(f"  [red]x[/red] {r.ticker:<16} {r.reason[:88]}")
+
+        settings.REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        out = settings.REPORT_DIR / "gate_verdicts.csv"
+        verdict.to_csv(out, index=False)
+        console.print(f"\nreport: {out}")
+
+        db.log_ingest(con, run_id, "gates", None, "OK", len(frame),
+                      f"{len(verdict)} companies", started)
+    finally:
+        con.close()
+
+
 # ------------------------------------------------------------------ coverage
 @app.command()
 def coverage() -> None:
