@@ -38,6 +38,34 @@ Run `validate` after every edit to `config/themes.yaml`. A mistyped symbol
 silently shrinks a theme basket and biases its index, so the validator treats
 an unresolved ticker as a config bug rather than dropping it quietly.
 
+## Automation
+
+A Windows scheduled task, `AI-Investo Nightly`, runs `scripts/run_nightly.cmd`
+at 06:30 daily and appends to `reports/nightly.log`. It is set to
+StartWhenAvailable, so a machine that was asleep catches up rather than losing
+the night.
+
+Seven stages run, each isolated — a failing stage is recorded and the rest still
+run. A nightly job that aborts halfway hides the failure until you go looking
+for data that never arrived.
+
+The filings backfill is deliberately incremental. BSE stops responding under
+sustained pagination rather than returning a 429, so the job walks three
+18-day windows per night and stores its cursor in `job_state`. A throttled
+night costs a night, not the backfill. It reaches the Oct-2024 floor in about
+13 nights.
+
+That floor is not the start of history on purpose: NSE's XBRL already carries
+true filing dates through Dec-2024, so BSE announcements are only needed to
+timestamp PDF-extracted quarters from 2025 onward. The overlap into the XBRL
+era lets the two sources' filing dates be cross-checked.
+
+```bash
+schtasks /query /tn "AI-Investo Nightly"     # check it
+schtasks /run   /tn "AI-Investo Nightly"     # run it now
+schtasks /delete /tn "AI-Investo Nightly" /f # remove it
+```
+
 ## Layout
 
 ```
@@ -60,9 +88,32 @@ figures look public ~45 days before they were, inflating every backtest.
 ## Status
 
 - [x] Stage 0 — foundation: schema, providers, theme graph, price ingest
-- [ ] Stage 1 — trend engine + theme propagation
-- [ ] Stage 2 — fundamentals, quality gates, G.E.M. score
+      (2.3M bars, 867 symbols, 761 priced Indian names)
+- [x] Stage 1 — trend engine, theme indices, divergence
+- [~] Stage 2 — fundamentals and quality gates
+  - [x] XBRL ingest with true filing dates (through Dec-2024)
+  - [x] Quality gates, tri-state, 21 tests
+  - [ ] PDF extraction for 2025+ quarters — built, needs `ANTHROPIC_API_KEY`
+        and an accuracy run before anything it produces is trusted
+  - [ ] Promoter shareholding ingest (pledge gate)
 - [ ] Stage 3 — backtest and weight calibration
 - [ ] Stage 4 — API + PWA
 - [ ] Stage 5 — portfolio, staged accumulation, journal
-- [ ] Stage 6 — alerts and automation
+- [x] Stage 6 — nightly automation (see above)
+
+### Known limitations
+
+- **Survivorship.** NSE publishes no historical index membership and no
+  delisted archive, so dated membership is only accurate from the first run
+  forward. A 2015–2026 backtest on today's constituents excludes every company
+  that failed, which flatters returns. Stage 3 must correct for this or state
+  it plainly in its output.
+- **No structured fundamentals after Dec-2024.** Both exchanges moved to
+  PDF-only filing under SEBI Integrated Filing. Until the extraction layer runs,
+  scoring would be on 18-month-old financials.
+- **Four gates cannot be evaluated yet** (cash conversion, receivable days,
+  related party, contingent liabilities) because quarterly results carry no
+  cash-flow or balance-sheet detail. They return UNKNOWN, which is not a pass —
+  so most names correctly show as UNVETTED rather than CLEARED.
+- **Divergence is unvalidated.** Whether a wide India-vs-global gap actually
+  mean-reverts is a Stage 3 question. The UI states it as an observation.
