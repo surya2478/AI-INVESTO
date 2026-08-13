@@ -254,6 +254,16 @@ CREATE TABLE IF NOT EXISTS scores (
     PRIMARY KEY (security_id, as_of_date)
 );
 
+-- Cursors for work that spans many nights. The filings backfill walks BSE in
+-- small windows because the exchange throttles sustained pagination, so its
+-- progress has to survive across runs.
+CREATE TABLE IF NOT EXISTS job_state (
+    job          VARCHAR PRIMARY KEY,
+    cursor_date  DATE,
+    detail       VARCHAR,
+    updated_at   TIMESTAMP DEFAULT current_timestamp
+);
+
 -- ------------------------------------------------------------ run bookkeeping
 CREATE TABLE IF NOT EXISTS ingest_log (
     run_id       VARCHAR NOT NULL,
