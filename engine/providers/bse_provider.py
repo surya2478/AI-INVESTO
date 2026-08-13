@@ -107,14 +107,36 @@ class BSEProvider:
     def __init__(self) -> None:
         self._session: cr.Session | None = None
 
-    def _get(self, url: str, timeout: float | None = None):
-        if self._session is None:
-            self._session = cr.Session(impersonate=BROWSER, headers=HEADERS)
-            self._session.get("https://www.bseindia.com/", timeout=settings.REQUEST_TIMEOUT)
-        response = self._session.get(url, timeout=timeout or settings.REQUEST_TIMEOUT)
-        if response.status_code != 200:
-            raise ProviderError(f"BSE HTTP {response.status_code} for {url[:90]}")
-        return response
+    def _warm(self) -> cr.Session:
+        session = cr.Session(impersonate=BROWSER, headers=HEADERS)
+        session.get("https://www.bseindia.com/", timeout=settings.REQUEST_TIMEOUT)
+        return session
+
+    def _get(self, url: str, timeout: float | None = None, tries: int = 4):
+        """GET with backoff and session re-warm.
+
+        BSE throttles hard under sustained pagination -- it stops responding
+        entirely rather than returning 429, surfacing as a curl timeout with
+        zero bytes. A dropped session is recoverable, so rebuild it and back off
+        rather than failing the run.
+        """
+        last: Exception | None = None
+        for attempt in range(1, tries + 1):
+            try:
+                if self._session is None:
+                    self._session = self._warm()
+                response = self._session.get(
+                    url, timeout=timeout or settings.REQUEST_TIMEOUT
+                )
+                if response.status_code == 200:
+                    return response
+                last = ProviderError(f"BSE HTTP {response.status_code} for {url[:90]}")
+            except Exception as exc:  # noqa: BLE001 - retried, then reported
+                last = exc
+                self._session = None          # force a fresh handshake
+            if attempt < tries:
+                time.sleep(min(2.0 * attempt, 12.0))
+        raise ProviderError(f"BSE request failed after {tries} tries: {last}")
 
     # ------------------------------------------------------------ scrip master
     def fetch_scrip_master(self) -> pd.DataFrame:
@@ -180,7 +202,13 @@ class BSEProvider:
             url = (f"{BSE_API}/AnnSubCategoryGetData/w?pageno={page}&strCat=Result"
                    f"&strPrevDate={from_date:%Y%m%d}&strScrip=&strSearch=P"
                    f"&strToDate={to_date:%Y%m%d}&strType=C&subcategory=")
-            payload = self._get(url, timeout=60).json()
+            try:
+                payload = self._get(url, timeout=60).json()
+            except (ProviderError, ValueError) as exc:
+                # Keep what this window already yielded; a later window may work.
+                log.warning("page %d of %s..%s failed, stopping window: %s",
+                            page, from_date, to_date, exc)
+                break
             rows = payload.get("Table", []) if isinstance(payload, dict) else payload
             if not rows:
                 break
@@ -196,7 +224,9 @@ class BSEProvider:
                 total = (payload["Table1"][0] or {}).get("ROWCNT")
             if total and len(collected) >= int(total):
                 break
-            time.sleep(settings.RATE_LIMIT_SLEEP)
+            # BSE throttles harder than NSE; pace pagination well below the
+            # shared default rather than discovering the limit by being cut off.
+            time.sleep(max(settings.RATE_LIMIT_SLEEP, 1.2))
 
         if not collected:
             return pd.DataFrame()
@@ -217,15 +247,25 @@ class BSEProvider:
     def fetch_result_announcements_range(
         self, start: dt.date, end: dt.date, window_days: int = 18
     ) -> pd.DataFrame:
-        """Walk a long span in windows BSE will accept."""
-        frames, cursor = [], start
+        """Walk a long span in windows BSE will accept.
+
+        Resilient by window: a throttled or failed window is logged and skipped
+        so the rest of the range still lands. Losing the whole backfill to one
+        timeout is how the first run failed.
+        """
+        frames, cursor, failures = [], start, 0
         while cursor <= end:
             chunk_end = min(cursor + dt.timedelta(days=window_days), end)
             try:
                 frames.append(self.fetch_result_announcements(cursor, chunk_end))
-            except ProviderError as exc:
+            except Exception as exc:  # noqa: BLE001 - one window must not end the run
+                failures += 1
                 log.warning("announcements %s..%s failed: %s", cursor, chunk_end, exc)
+                time.sleep(5.0)          # let the throttle decay before continuing
             cursor = chunk_end + dt.timedelta(days=1)
+
+        if failures:
+            log.warning("%d window(s) failed; backfill is incomplete", failures)
         if not frames:
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True).drop_duplicates(
