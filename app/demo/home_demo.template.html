@@ -262,6 +262,31 @@
   }
   .pl-none { color: var(--p-muted); }
 
+  /* score bands */
+  .bandbox {
+    margin: 0 20px 10px; padding: 12px 13px; border-radius: 5px;
+    background: var(--p-surface); border: 1px solid var(--p-line);
+  }
+  .bandbox.upper { border-left: 2px solid var(--p-pos); }
+  .bandbox.middle { border-left: 2px solid var(--p-muted); }
+  .bandbox.lower { border-left: 2px solid var(--p-line); }
+  .bandhead {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .bandhead b { color: var(--p-ink); font-size: 11px; }
+  .bandstats {
+    font-family: var(--mono); font-size: 9.5px; color: var(--p-muted);
+    margin-top: 5px; font-variant-numeric: tabular-nums;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+  .chip-name {
+    font-family: var(--mono); font-size: 10.5px; padding: 3px 7px;
+    border: 1px solid var(--p-line); border-radius: 3px; color: var(--p-ink);
+  }
+  .chip-name span { color: var(--p-muted); font-size: 9px; }
+
   /* gems pending */
   .pending {
     margin: 0 20px; padding: 14px; border-radius: 5px;
@@ -401,16 +426,8 @@
           <div class="band-label"><span>Survived every gate</span><span id="cleared-count"></span></div>
           <div id="cleared"></div>
 
-          <div class="band-label"><span>Ranking</span></div>
-          <div class="pending">
-            <div class="tag">Not scored yet</div>
-            <p>
-              These names are ordered by size, not by quality. The G.E.M. score —
-              growth inflection, business quality, discovery, valuation — is not
-              built, so nothing here says one is better than another. Passing the
-              gates means a company is worth researching, not worth buying.
-            </p>
-          </div>
+          <div class="band-label"><span>Score bands</span><span>not a ranking</span></div>
+          <div id="bands"></div>
 
           <div class="disclaimer">
             Research tool. Ranks and explains — does not advise.
@@ -445,6 +462,28 @@
     </div>
 
     <div class="notes">
+      <div class="callout">
+        <h3>The score was backtested and it does not rank</h3>
+        <p>
+          Three annual rebalances, 12-month forward returns, 676–760 names each.
+          The top decile returned 42.0% against a universe mean of 31.3% — but the
+          <em>bottom</em> decile returned 49.7%, and mean rank correlation was
+          <strong>−0.078</strong>. The relationship is U-shaped, not monotonic.
+        </p>
+        <p>
+          Discovery (−0.24) and Valuation (−0.24) were inverted in every period.
+          Reversing them would produce a good-looking backtest immediately, and it
+          was not done: three years of a momentum-led bull market is the wrong
+          sample on which to conclude that small companies cannot multiply or that
+          overpaying does not cost. Fitting weights to three observations is how you
+          get a confident score with nothing behind it.
+        </p>
+        <p>
+          So the score groups rather than orders. Full numbers and biases in
+          <code>docs/BACKTEST.md</code>.
+        </p>
+      </div>
+
       <div class="callout">
         <h3>One thing changed from the approved spec</h3>
         <p>
@@ -562,7 +601,8 @@
           <tr><td>Fundamentals</td><td class="yes">computed</td><td>760 companies via Yahoo — income, cash flow, balance sheet</td></tr>
           <tr><td>Promoter pledge</td><td class="yes">computed</td><td>515 disclosures from NSE encumbrance filings</td></tr>
           <tr><td>3 of 12 gates</td><td class="no">no data</td><td>receivables, related party, contingent liabilities</td></tr>
-          <tr><td>G.E.M. scores</td><td class="no">not built</td><td>fundamentals now in place; ranking is the next stage</td></tr>
+          <tr><td>G.E.M. pillars</td><td class="yes">computed</td><td>760 companies, six pillars as universe percentiles</td></tr>
+          <tr><td>Ranking</td><td class="no">failed backtest</td><td>mean rank IC −0.078; bottom decile beat top. Used to band only</td></tr>
           <tr><td>Portfolio + journal</td><td class="no">stage 5</td><td>no holdings entered yet</td></tr>
           <tr><td>Thresholds behind stages</td><td class="no">stage 3</td><td>reasoned defaults, not yet calibrated</td></tr>
         </tbody>
@@ -741,6 +781,39 @@ if (cleared.length) {
       balance-sheet filters — not that it is worth buying. "n/d" means no pledge
       disclosure was filed, which is unknown rather than zero.
     </div>`;
+}
+
+/* ------------------------------------------------------------ score bands */
+const B = G.bands || {};
+if (B.available && (B.bands || []).length) {
+  const label = { UPPER: "Upper third", MIDDLE: "Middle third", LOWER: "Lower third" };
+  document.getElementById("bands").innerHTML =
+    (B.bands || []).map(b => `
+      <div class="bandbox ${b.band.toLowerCase()}">
+        <div class="bandhead">
+          <b>${label[b.band] || b.band}</b>
+          <span>${b.count} cleared</span>
+        </div>
+        <div class="bandstats">
+          growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} ·
+          momentum ${b.avg_momentum.toFixed(0)}
+        </div>
+        <div class="chips">
+          ${b.names.map(n => `<span class="chip-name">${n.ticker}
+             <span>${n.mcap_cr == null ? "" : (n.mcap_cr >= 1000
+               ? (n.mcap_cr/1000).toFixed(1) + "k" : n.mcap_cr.toFixed(0))}</span></span>`).join("")}
+        </div>
+      </div>`).join("") + `
+    <div class="disclaimer" style="margin-top:4px">
+      Bands, not ranks. Backtested over 3 rebalances the score did not order
+      companies reliably — the bottom decile beat the top and rank correlation
+      was negative. Within a band names are listed by size and no claim is made
+      that one is better than another.
+    </div>`;
+} else {
+  document.getElementById("bands").innerHTML =
+    `<div class="pending"><div class="tag">Not scored</div>
+     <p>Run <code>investo score</code> to band the cleared universe.</p></div>`;
 }
 
 /* --------------------------------------------------------------- the board */

@@ -3878,10 +3878,10 @@
     "available": true,
     "as_of": "2026-08-14",
     "verdicts": {
+      "REJECTED": 143,
       "CLEARED": 327,
       "FLAGGED": 233,
-      "UNVETTED": 58,
-      "REJECTED": 143
+      "UNVETTED": 58
     },
     "cleared_total": 327,
     "cleared_theme": [
@@ -4054,6 +4054,276 @@
         "pledge_pct": null
       }
     ],
+    "bands": {
+      "available": true,
+      "bands": [
+        {
+          "band": "UPPER",
+          "count": 21,
+          "avg_growth": 58.5721759187302,
+          "avg_quality": 52.103086887567486,
+          "avg_momentum": 57.05170077876948,
+          "names": [
+            {
+              "ticker": "KRSNAA",
+              "theme": "Innovative Health & Life Sciences",
+              "mcap_cr": 1788.0,
+              "g": 52.79886217990619,
+              "q": 38.03824503311258
+            },
+            {
+              "ticker": "HPL",
+              "theme": "Grid & Power Transmission",
+              "mcap_cr": 2049.0,
+              "g": 57.963463819385865,
+              "q": 52.71622095046554
+            },
+            {
+              "ticker": "MOSCHIP",
+              "theme": "Semiconductors & Electronics Manufacturing",
+              "mcap_cr": 4097.0,
+              "g": 59.873644424191234,
+              "q": 54.46629116806942
+            },
+            {
+              "ticker": "CLEAN",
+              "theme": "Specialty Chemicals & Advanced Materials",
+              "mcap_cr": 8892.0,
+              "g": 56.83545945056576,
+              "q": 57.829146132597785
+            },
+            {
+              "ticker": "RAILTEL",
+              "theme": "AI & Compute",
+              "mcap_cr": 9156.0,
+              "g": 49.002156135788425,
+              "q": 61.32159293471001
+            },
+            {
+              "ticker": "VOLTAMP",
+              "theme": "AI & Compute",
+              "mcap_cr": 10153.0,
+              "g": 41.5482602995606,
+              "q": 52.20556144655824
+            },
+            {
+              "ticker": "METROPOLIS",
+              "theme": "Innovative Health & Life Sciences",
+              "mcap_cr": 11588.0,
+              "g": 65.82780331804483,
+              "q": 61.24034374017292
+            },
+            {
+              "ticker": "GRAVITA",
+              "theme": "Energy Storage & BESS",
+              "mcap_cr": 13422.0,
+              "g": 62.787648199584794,
+              "q": 43.7695467576659
+            },
+            {
+              "ticker": "VINATIORGA",
+              "theme": "Specialty Chemicals & Advanced Materials",
+              "mcap_cr": 13939.0,
+              "g": 68.004431435076,
+              "q": 67.58471053254583
+            },
+            {
+              "ticker": "ZENTEC",
+              "theme": "Defence & Space Technology",
+              "mcap_cr": 16534.0,
+              "g": 42.98995295937084,
+              "q": 40.797594400069585
+            },
+            {
+              "ticker": "HBLENGINE",
+              "theme": "Energy Storage & BESS",
+              "mcap_cr": 19218.0,
+              "g": 53.00176122151702,
+              "q": 66.48401631575166
+            },
+            {
+              "ticker": "AMBER",
+              "theme": "AI & Compute",
+              "mcap_cr": 25303.0,
+              "g": 69.95448946656437,
+              "q": 45.707089178133614
+            }
+          ]
+        },
+        {
+          "band": "MIDDLE",
+          "count": 14,
+          "avg_growth": 40.08792938278549,
+          "avg_quality": 54.22493679513364,
+          "avg_momentum": 51.00942176624505,
+          "names": [
+            {
+              "ticker": "AWHCL",
+              "theme": "Recycling & Circular Economy",
+              "mcap_cr": 1116.0,
+              "g": 49.704829676179344,
+              "q": 48.361649755858295
+            },
+            {
+              "ticker": "BORORENEW",
+              "theme": "Solar & Renewables",
+              "mcap_cr": 8138.0,
+              "g": 25.6575992907909,
+              "q": 59.66978666081391
+            },
+            {
+              "ticker": "FINPIPE",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 10042.0,
+              "g": 44.62858326214526,
+              "q": 38.27916451967845
+            },
+            {
+              "ticker": "KIRLOSBROS",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 15368.0,
+              "g": 38.339284712478346,
+              "q": 57.29184554260605
+            },
+            {
+              "ticker": "FINEORG",
+              "theme": "Specialty Chemicals & Advanced Materials",
+              "mcap_cr": 15774.0,
+              "g": 54.13059451509813,
+              "q": 56.57522895712859
+            },
+            {
+              "ticker": "JINDALSAW",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 16893.0,
+              "g": 16.381801584842496,
+              "q": 49.09149194752273
+            },
+            {
+              "ticker": "POLYMED",
+              "theme": "Innovative Health & Life Sciences",
+              "mcap_cr": 18389.0,
+              "g": 48.40736870484941,
+              "q": 43.663364972228145
+            },
+            {
+              "ticker": "SCHNEIDER",
+              "theme": "Grid & Power Transmission",
+              "mcap_cr": 32945.0,
+              "g": 38.7964104152162,
+              "q": 62.612683268274914
+            },
+            {
+              "ticker": "LTTS",
+              "theme": "AI & Compute",
+              "mcap_cr": 38212.0,
+              "g": 32.391184805234154,
+              "q": 60.76872082371128
+            },
+            {
+              "ticker": "EXIDEIND",
+              "theme": "Energy Storage & BESS",
+              "mcap_cr": 41234.0,
+              "g": 32.7686570096743,
+              "q": 52.99957749739131
+            },
+            {
+              "ticker": "ASTRAL",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 42769.0,
+              "g": 39.864347336165324,
+              "q": 64.58592279690255
+            },
+            {
+              "ticker": "PREMIERENE",
+              "theme": "Solar & Renewables",
+              "mcap_cr": 46802.0,
+              "g": 63.378873882303154,
+              "q": 52.42635313090444
+            }
+          ]
+        },
+        {
+          "band": "LOWER",
+          "count": 10,
+          "avg_growth": 30.027402454327046,
+          "avg_quality": 45.56926092428745,
+          "avg_momentum": 25.579548251647,
+          "names": [
+            {
+              "ticker": "ROTO",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 1248.0,
+              "g": 19.4949693015171,
+              "q": 45.39698809092124
+            },
+            {
+              "ticker": "PRAJIND",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 5911.0,
+              "g": 19.36613431675122,
+              "q": 28.89852337344892
+            },
+            {
+              "ticker": "SYNGENE",
+              "theme": "Innovative Health & Life Sciences",
+              "mcap_cr": 16211.0,
+              "g": 27.98318149801846,
+              "q": 54.283024696070385
+            },
+            {
+              "ticker": "DEEPAKNTR",
+              "theme": "Specialty Chemicals & Advanced Materials",
+              "mcap_cr": 23210.0,
+              "g": 39.80915636176407,
+              "q": 38.87534673510711
+            },
+            {
+              "ticker": "TATAELXSI",
+              "theme": "Semiconductors & Electronics Manufacturing",
+              "mcap_cr": 23521.0,
+              "g": 18.966349480487104,
+              "q": 58.888324332553424
+            },
+            {
+              "ticker": "BLUESTARCO",
+              "theme": "AI & Compute",
+              "mcap_cr": 31048.0,
+              "g": 40.863578815564836,
+              "q": 43.798039611610434
+            },
+            {
+              "ticker": "PIIND",
+              "theme": "Specialty Chemicals & Advanced Materials",
+              "mcap_cr": 37717.0,
+              "g": 28.048331946666636,
+              "q": 46.39328322083956
+            },
+            {
+              "ticker": "VOLTAS",
+              "theme": "AI & Compute",
+              "mcap_cr": 42641.0,
+              "g": 32.74535641915547,
+              "q": 27.81294714033977
+            },
+            {
+              "ticker": "SUPREMEIND",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 44523.0,
+              "g": 33.147413793662864,
+              "q": 63.555959165534766
+            },
+            {
+              "ticker": "THERMAX",
+              "theme": "Water Treatment & Infrastructure",
+              "mcap_cr": 47669.0,
+              "g": 39.84955260968271,
+              "q": 47.79017287644885
+            }
+          ]
+        }
+      ]
+    },
     "companies": 761,
     "per_gate": [
       {
@@ -4113,6 +4383,13 @@
         "total": 761
       },
       {
+        "gate_name": "related_party",
+        "passed": 0.0,
+        "failed": 0.0,
+        "unknown": 761.0,
+        "total": 761
+      },
+      {
         "gate_name": "receivable_days",
         "passed": 0.0,
         "failed": 0.0,
@@ -4121,13 +4398,6 @@
       },
       {
         "gate_name": "contingent_liabilities",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 761.0,
-        "total": 761
-      },
-      {
-        "gate_name": "related_party",
         "passed": 0.0,
         "failed": 0.0,
         "unknown": 761.0,

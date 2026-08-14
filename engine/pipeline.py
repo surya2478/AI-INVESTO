@@ -543,6 +543,78 @@ def ingest_pdf(
 
 
 @app.command()
+def score() -> None:
+    """Compute G.E.M. pillars and store them.
+
+    Backtested at 3 rebalances: the composite does NOT rank (top decile beat the
+    universe but the bottom decile beat the top, mean IC -0.078). Scores are
+    stored to GROUP companies into bands, not to order them.
+    """
+    from engine.scoring import gem
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        started = dt.datetime.now()
+        as_of = dt.date.today()
+        console.print("scoring the universe...")
+        frame = gem.score_universe(con, as_of=as_of, include_non_pit=True)
+        if frame.empty:
+            console.print("[yellow]nothing to score[/yellow]")
+            return
+
+        # Band, not rank: thirds of the scored universe.
+        frame = frame.copy()
+        frame["band"] = pd.qcut(frame["gem_score"].rank(method="first"), 3,
+                                labels=["LOWER", "MIDDLE", "UPPER"])
+
+        staged = pd.DataFrame({
+            "security_id": frame["security_id"],
+            "as_of_date": as_of,
+            "theme_id": None,
+            "t_score": frame["t_score"], "g_score": frame["g_score"],
+            "q_score": frame["q_score"], "d_score": frame["d_score"],
+            "v_score": frame["v_score"], "m_score": frame["m_score"],
+            "gem_score": frame["gem_score"],
+            "rank_overall": frame["gem_score"].rank(ascending=False).astype(int),
+            "gates_passed": None, "gates_failed": None,
+            # `explain` is a JSON column; a bare string is rejected.
+            "explain": frame["band"].astype(str).map(lambda b: f'{{"band":"{b}"}}'),
+        })
+
+        con.register("staged_scores", staged)
+        con.execute("DELETE FROM scores WHERE as_of_date = ?", [as_of])
+        con.execute("""
+            INSERT INTO scores (security_id, as_of_date, theme_id, t_score, g_score,
+                                q_score, d_score, v_score, m_score, gem_score,
+                                rank_overall, gates_passed, gates_failed, explain)
+            SELECT security_id, as_of_date, theme_id, t_score, g_score, q_score,
+                   d_score, v_score, m_score, gem_score, rank_overall,
+                   gates_passed, gates_failed, explain
+              FROM staged_scores
+        """)
+        con.unregister("staged_scores")
+
+        table = Table(title="Pillar averages by band")
+        table.add_column("band", style="cyan")
+        table.add_column("companies", justify="right")
+        for col in ("growth", "quality", "theme", "momentum"):
+            table.add_column(col, justify="right")
+        for band in ("UPPER", "MIDDLE", "LOWER"):
+            sub = frame[frame.band == band]
+            table.add_row(band, f"{len(sub):,}",
+                          f"{sub.g_score.mean():.0f}", f"{sub.q_score.mean():.0f}",
+                          f"{sub.t_score.mean():.0f}", f"{sub.m_score.mean():.0f}")
+        console.print(table)
+        console.print(f"[green]{len(staged):,} companies scored[/green] as of {as_of}")
+        console.print("[dim]Bands group; they do not rank. See docs/BACKTEST.md.[/dim]")
+
+        db.log_ingest(con, run_id, "score", None, "OK", len(staged), None, started)
+    finally:
+        con.close()
+
+
+@app.command()
 def gates(
     limit: int = typer.Option(0, help="Cap companies evaluated (0 = all)"),
     show: int = typer.Option(15, help="Rows of detail to print"),

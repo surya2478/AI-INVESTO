@@ -110,6 +110,70 @@ def build() -> dict:
     }
 
 
+def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
+    """Cleared theme companies grouped into score bands.
+
+    Bands, not ranks. The backtest found the composite does not order companies
+    reliably (mean rank IC -0.078, bottom decile beating top), so within a band
+    names are listed by size and no claim is made that one is better than
+    another. See docs/BACKTEST.md.
+    """
+    scored = con.execute("""
+        SELECT s.ticker, sc.gem_score, sc.g_score, sc.q_score, sc.m_score,
+               sc.t_score, json_extract_string(sc.explain, '$.band') AS band,
+               round(s.market_cap/1e7, 0) AS mcap_cr
+          FROM scores sc JOIN securities s ON s.security_id = sc.security_id
+         WHERE sc.as_of_date = (SELECT max(as_of_date) FROM scores)
+    """).df()
+    if scored.empty:
+        return {"available": False}
+
+    cleared = con.execute("""
+        WITH per AS (
+            SELECT security_id,
+                max(CASE WHEN status='FAIL' AND gate_name IN
+                    ('surveillance','cash_conversion','serial_dilution','sustained_losses')
+                    THEN 1 ELSE 0 END) AS crit_fail,
+                max(CASE WHEN status='FAIL' THEN 1 ELSE 0 END) AS any_fail,
+                max(CASE WHEN status='UNKNOWN' AND gate_name IN
+                    ('surveillance','cash_conversion','serial_dilution','sustained_losses')
+                    THEN 1 ELSE 0 END) AS crit_unknown
+              FROM gate_results WHERE as_of_date = ? GROUP BY security_id)
+        SELECT s.ticker FROM per JOIN securities s ON s.security_id = per.security_id
+         WHERE crit_fail = 0 AND any_fail = 0 AND crit_unknown = 0
+    """, [as_of]).df()
+
+    scored = scored[scored["ticker"].isin(set(cleared["ticker"]))].copy()
+    scored["theme"] = scored["ticker"].map(theme_of)
+    scored = scored[scored["theme"].notna()]
+    if scored.empty:
+        return {"available": False}
+
+    out = {"available": True, "bands": []}
+    for band in ("UPPER", "MIDDLE", "LOWER"):
+        sub = scored[scored["band"] == band].sort_values("mcap_cr")
+        if sub.empty:
+            continue
+        out["bands"].append({
+            "band": band,
+            "count": int(len(sub)),
+            "avg_growth": float(sub["g_score"].mean()),
+            "avg_quality": float(sub["q_score"].mean()),
+            "avg_momentum": float(sub["m_score"].mean()),
+            "names": [
+                {
+                    "ticker": r.ticker.replace(".NS", ""),
+                    "theme": r.theme,
+                    "mcap_cr": None if pd.isna(r.mcap_cr) else float(r.mcap_cr),
+                    "g": None if pd.isna(r.g_score) else float(r.g_score),
+                    "q": None if pd.isna(r.q_score) else float(r.q_score),
+                }
+                for r in sub.head(12).itertuples()
+            ],
+        })
+    return out
+
+
 def gate_payload() -> dict:
     """Latest gate verdicts, if they have been computed."""
     con = db.connect(read_only=True)
@@ -211,6 +275,7 @@ def gate_payload() -> dict:
                 }
                 for r in in_theme.head(24).itertuples()
             ],
+            "bands": band_payload(con, as_of, theme_of),
             "companies": int(con.execute(
                 "SELECT count(DISTINCT security_id) FROM gate_results WHERE as_of_date = ?",
                 [as_of]).fetchone()[0]),
