@@ -349,6 +349,62 @@ def ingest_filings(
         con.close()
 
 
+@ingest_app.command("pdf")
+def ingest_pdf(
+    batch: int = typer.Option(10, help="Companies per batch"),
+    model: str = typer.Option(None, help="OpenRouter model id; overrides config"),
+    restart: bool = typer.Option(False, help="Start from the first company again"),
+) -> None:
+    """Extract post-2024 quarters from result PDFs, one batch at a time.
+
+    Only guard-clean extractions reach fundamentals_pit. Everything else is
+    quarantined in pdf_extractions with the reason, so quality is visible before
+    more data exists.
+    """
+    from engine.pdf_ingest import quality_report, run_batch
+
+    con = db.connect()
+    try:
+        console.print(f"processing {batch} companies...")
+        result = run_batch(con, batch_size=batch, model=model, restart=restart)
+
+        if result.get("message"):
+            console.print(f"[green]{result['message']}[/green]")
+            return
+
+        rate = result["clean_rate"]
+        tone = "green" if rate >= 0.7 else "yellow" if rate >= 0.4 else "red"
+        console.print(
+            f"\n[bold]{result['companies']} companies, "
+            f"{result['attempted']} statements[/bold] in {result['seconds']:.0f}s\n"
+            f"  [green]{result['clean']} clean[/green] (ingested) · "
+            f"[yellow]{result['quarantined']} quarantined[/yellow] · "
+            f"[red]{result['failed']} failed[/red]\n"
+            f"  clean rate: [{tone}]{rate:.0%}[/{tone}]   cost: ${result['cost']:.4f}"
+        )
+
+        problems = result["problems"]
+        if not problems.empty:
+            console.print("\n[bold]why statements were held back[/bold]")
+            for _, row in problems.head(10).iterrows():
+                console.print(f"  {row['symbol']:<14} {str(row['period_end']):<12} "
+                              f"{row['problems'][:76]}")
+
+        cumulative = quality_report(con, model)
+        if not cumulative.empty:
+            table = Table(title="Cumulative")
+            for col in ("status", "statements", "companies", "cost_usd"):
+                table.add_column(col, justify="right" if col != "status" else "left")
+            for _, r in cumulative.iterrows():
+                table.add_row(str(r.status), f"{int(r.statements):,}",
+                              f"{int(r.companies):,}", f"${float(r.cost_usd or 0):.4f}")
+            console.print(table)
+
+        console.print(f"\nnext batch resumes after [cyan]{result['last_ticker']}[/cyan]")
+    finally:
+        con.close()
+
+
 @app.command()
 def gates(
     limit: int = typer.Option(0, help="Cap companies evaluated (0 = all)"),

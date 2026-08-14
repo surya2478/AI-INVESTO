@@ -387,6 +387,99 @@ def adjacent_column_check(
     return None
 
 
+# Phrases that only appear on a results statement page, used to find the few
+# pages worth sending out of a bundled board-meeting packet.
+STATEMENT_MARKERS = (
+    "revenue from operations", "profit before tax", "total income",
+    "profit for the period", "earnings per share", "total expenses",
+)
+
+
+def trim_to_statement(pdf_bytes: bytes, max_pages: int = 6) -> tuple[bytes, str]:
+    """Cut a bundled filing down to the pages holding the results statement.
+
+    Adani Green and others publish ONLY a 12-18 MB board-meeting packet: the
+    statement, the investor presentation and the press release in one file.
+    Sent whole, the prompt overwhelms the model and the reply truncates or comes
+    back empty -- that was the largest single failure class in the first batches.
+    There is no smaller document to choose, so the fix is to send less of it.
+
+    Scores each page on statement vocabulary and keeps the best contiguous run.
+    Returns the original bytes unchanged when trimming is unnecessary or fails,
+    since a whole document is better than a wrongly cropped one.
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError:
+        return pdf_bytes, "pypdf missing; sent whole"
+
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        total = len(reader.pages)
+        if total <= max_pages:
+            return pdf_bytes, f"{total}p, sent whole"
+
+        scores = []
+        for page in reader.pages:
+            try:
+                text = (page.extract_text() or "").lower()
+            except Exception:  # noqa: BLE001 - a bad page scores zero
+                text = ""
+            scores.append(sum(marker in text for marker in STATEMENT_MARKERS))
+
+        if max(scores) == 0:
+            return pdf_bytes, f"{total}p, no statement page found; sent whole"
+
+        # Best window of consecutive pages, so a statement split across pages
+        # stays intact.
+        window = min(max_pages, total)
+        best_start = max(
+            range(total - window + 1), key=lambda i: sum(scores[i:i + window])
+        )
+
+        writer = PdfWriter()
+        for page in reader.pages[best_start:best_start + window]:
+            writer.add_page(page)
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        trimmed = buffer.getvalue()
+
+        if len(trimmed) >= len(pdf_bytes):
+            return pdf_bytes, f"{total}p, trim gained nothing"
+        return trimmed, (f"{total}p -> pages {best_start + 1}-{best_start + window}, "
+                         f"{len(pdf_bytes)/1e6:.1f}MB -> {len(trimmed)/1e6:.1f}MB")
+    except Exception as exc:  # noqa: BLE001 - never let trimming break extraction
+        log.warning("pdf trim failed: %s", exc)
+        return pdf_bytes, f"trim failed: {type(exc).__name__}"
+
+
+_SIZE = re.compile(r"([\d.]+)\s*(KB|MB|GB)", re.I)
+# Usable documents in the validation sample ran 0.2-7.2 MB. Below the floor is a
+# cover letter with no table; above the ceiling is a board-meeting packet with
+# the investor presentation bundled in, which truncates the model's reply.
+SIZE_FLOOR_MB, SIZE_CEILING_MB = 0.1, 9.0
+
+
+def _parse_file_size(value) -> float | None:
+    """NSE reports attachment size as '809.36 KB' / '1.41 MB'."""
+    if not isinstance(value, str):
+        return None
+    match = _SIZE.search(value)
+    if not match:
+        return None
+    number, unit = float(match.group(1)), match.group(2).upper()
+    return number * {"KB": 1e-3, "MB": 1.0, "GB": 1e3}[unit]
+
+
+def _size_penalty(size_mb) -> int:
+    """0 = comfortably usable, 1 = marginal, 2 = known to fail."""
+    if size_mb is None:
+        return 1
+    if size_mb > SIZE_CEILING_MB or size_mb < SIZE_FLOOR_MB:
+        return 2
+    return 0
+
+
 def _parse_announcement_date(value) -> dt.date | None:
     """NSE stamps announcements as '12-Aug-2026 16:31:19'."""
     if not isinstance(value, str):
@@ -538,16 +631,30 @@ class BSEPDFProvider:
         attachment URLs, and carries the announcement timestamp -- which doubles
         as the filing_date the point-in-time contract needs.
         """
-        session = cr.Session(impersonate=BROWSER, headers={
-            **HEADERS, "Referer": f"{NSE_WWW}/get-quotes/equity?symbol={symbol}",
-        })
-        session.get(NSE_WWW, timeout=settings.REQUEST_TIMEOUT)
-        response = session.get(
-            f"{NSE_WWW}/api/corporate-announcements?index=equities&symbol={symbol}",
-            timeout=60,
-        )
-        if response.status_code != 200:
-            raise ProviderError(f"NSE announcements HTTP {response.status_code} for {symbol}")
+        # Retried with a fresh handshake: NSE drops connections under sustained
+        # use, and an unattended batch must not die on one slow response.
+        response = None
+        last: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                session = cr.Session(impersonate=BROWSER, headers={
+                    **HEADERS, "Referer": f"{NSE_WWW}/get-quotes/equity?symbol={symbol}",
+                })
+                session.get(NSE_WWW, timeout=settings.REQUEST_TIMEOUT)
+                response = session.get(
+                    f"{NSE_WWW}/api/corporate-announcements?index=equities&symbol={symbol}",
+                    timeout=90,
+                )
+                if response.status_code == 200:
+                    break
+                last = ProviderError(f"HTTP {response.status_code}")
+                response = None
+            except Exception as exc:  # noqa: BLE001 - retried below
+                last, response = exc, None
+            time.sleep(attempt * 2.0)
+
+        if response is None:
+            raise ProviderError(f"NSE announcements failed for {symbol}: {last}")
 
         try:
             rows = response.json()
@@ -573,21 +680,28 @@ class BSEPDFProvider:
                 "filing_date": announced,
                 "pdf_url": url,
                 "desc": desc,
+                "size_mb": _parse_file_size(record.get("attFileSize")),
                 "text": text[:300],
             })
 
         frame = pd.DataFrame(out)
         if frame.empty:
             return frame
-        # Prefer the board-meeting outcome / results filing over later
-        # newspaper reprints of the same numbers.
+
+        # Prefer the results filing over later newspaper reprints, then prefer a
+        # document in a workable SIZE BAND. Measured: extraction fails on the
+        # 12-18 MB board-meeting packets that bundle the investor presentation
+        # (the prompt overwhelms the model and the reply truncates), and equally
+        # on sub-100 KB cover letters that contain no table at all. The usable
+        # documents in the validation sample were 0.2-7.2 MB.
         frame["rank"] = frame["desc"].map(
             lambda d: 0 if re.search(r"outcome|integrated filing|financial result", d, re.I) else 1
         )
-        return (frame.sort_values(["period_end", "rank", "filing_date"],
-                                  ascending=[False, True, True])
+        frame["size_penalty"] = frame["size_mb"].map(_size_penalty)
+        return (frame.sort_values(["period_end", "size_penalty", "rank", "filing_date"],
+                                  ascending=[False, True, True, True])
                 .drop_duplicates("period_end", keep="first")
-                .drop(columns="rank").reset_index(drop=True))
+                .drop(columns=["rank", "size_penalty"]).reset_index(drop=True))
 
     def fetch_pdf(self, url: str) -> bytes:
         """Download an announcement attachment."""
@@ -672,6 +786,9 @@ class BSEPDFProvider:
         cost for the call, so a bulk run can report real spend rather than an
         estimate.
         """
+        pdf_bytes, trim_note = trim_to_statement(pdf_bytes)
+        log.info("pdf: %s", trim_note)
+
         if len(pdf_bytes) > 30 * 1024 * 1024:
             raise ProviderError(f"pdf too large for one request: {len(pdf_bytes):,} bytes")
 

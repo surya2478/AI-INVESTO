@@ -270,6 +270,23 @@ CREATE TABLE IF NOT EXISTS job_state (
     updated_at   TIMESTAMP DEFAULT current_timestamp
 );
 
+-- Every PDF extraction attempt, whether or not it was kept. Quarantined rows
+-- stay here rather than in fundamentals_pit, so a suspect figure is reviewable
+-- without ever reaching the scoring engine.
+CREATE TABLE IF NOT EXISTS pdf_extractions (
+    security_id  BIGINT  NOT NULL,
+    period_end   DATE    NOT NULL,
+    model        VARCHAR NOT NULL,
+    status       VARCHAR,          -- CLEAN | QUARANTINED | FAILED
+    problems     VARCHAR,          -- which guard objected, verbatim
+    filing_date  DATE,
+    pdf_url      VARCHAR,
+    cost_usd     DOUBLE,
+    payload      JSON,             -- the full extraction, for later review
+    extracted_at TIMESTAMP DEFAULT current_timestamp,
+    PRIMARY KEY (security_id, period_end, model)
+);
+
 -- ------------------------------------------------------------ run bookkeeping
 CREATE TABLE IF NOT EXISTS ingest_log (
     run_id       VARCHAR NOT NULL,
