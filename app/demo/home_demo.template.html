@@ -242,6 +242,26 @@
   .s-fail { background: var(--p-neg); }
   .s-unk  { background: var(--p-line); }
 
+  /* cleared list */
+  .namerow {
+    display: grid; grid-template-columns: 1fr 64px 52px;
+    gap: 8px; align-items: center; padding: 9px 0;
+    border-bottom: 1px solid var(--p-line);
+  }
+  .namerow:last-child { border-bottom: 0; }
+  .nm-tic { font-family: var(--mono); font-size: 12.5px; letter-spacing: -0.01em; }
+  .nm-th { font-size: 9.5px; color: var(--p-muted); margin-top: 2px; }
+  .nm-cap {
+    text-align: right; font-family: var(--mono); font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .nm-cap small { display: block; font-size: 8.5px; color: var(--p-muted); }
+  .nm-pl {
+    text-align: right; font-family: var(--mono); font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pl-none { color: var(--p-muted); }
+
   /* gems pending */
   .pending {
     margin: 0 20px; padding: 14px; border-radius: 5px;
@@ -378,14 +398,17 @@
           <div class="band-label"><span>Screening</span><span id="screen-count"></span></div>
           <div id="screening"></div>
 
-          <div class="band-label"><span>Gems</span></div>
+          <div class="band-label"><span>Survived every gate</span><span id="cleared-count"></span></div>
+          <div id="cleared"></div>
+
+          <div class="band-label"><span>Ranking</span></div>
           <div class="pending">
-            <div class="tag">No scores yet</div>
+            <div class="tag">Not scored yet</div>
             <p>
-              Screening runs; ranking does not. The G.E.M. score needs quarterly
-              financials for the whole universe, and structured filings stop at
-              Dec&nbsp;2024 — both exchanges moved to PDF-only. Ranking on price
-              action alone would just be a momentum screen wearing a different name.
+              These names are ordered by size, not by quality. The G.E.M. score —
+              growth inflection, business quality, discovery, valuation — is not
+              built, so nothing here says one is better than another. Passing the
+              gates means a company is worth researching, not worth buying.
             </p>
           </div>
 
@@ -500,17 +523,18 @@
       <div class="note">
         <span class="marker">5</span>
         <div>
-          <h3>Nothing is cleared, and that is correct</h3>
+          <h3>What the pledge gate caught</h3>
           <p>
-            All 761 companies were screened. None came back <em>cleared</em>, because
-            cash conversion is a critical gate and no company has the data to answer
-            it — quarterly results in India carry no cash-flow statement. Those names
-            are <em>unvetted</em>, not clean.
+            Two names sat in this cleared list an hour earlier: <strong>KECL</strong>,
+            the smallest theme company on it at ₹953 cr, and
+            <strong>Thyrocare</strong>. Both moved out once promoter encumbrance was
+            wired in — 79.9% and 84.0% of their promoter stakes are pledged.
           </p>
           <p>
-            The distinction is the whole point. Absence of evidence is not evidence of
-            quality, and a screen that quietly counts "not checked" as "passed" is how
-            people end up holding the thing the gates existed to catch.
+            A pledged stake is a forced seller in waiting: a price fall triggers lender
+            selling, which drives the price down further. It says nothing about the
+            business, which is exactly why it gates rather than scores — and why a
+            screen without it reads as clean when it is not.
           </p>
         </div>
       </div>
@@ -534,9 +558,11 @@
           <tr><td>Sparklines</td><td class="yes">computed</td><td>18 months, both legs rebased to 100</td></tr>
           <tr><td>Stage + confluence</td><td class="yes">computed</td><td>daily/weekly/monthly momentum</td></tr>
           <tr><td>Divergence + percentile</td><td class="yes">computed</td><td>13-week momentum gap vs own history</td></tr>
-          <tr><td>Quality gates</td><td class="yes">computed</td><td>761 companies screened; 37 rejected on live NSE surveillance</td></tr>
-          <tr><td>4 of 12 gates</td><td class="no">no data</td><td>cash flow, receivables, related party, pledge — report UNKNOWN</td></tr>
-          <tr><td>G.E.M. scores</td><td class="no">blocked</td><td>needs quarterly financials past Dec-2024; both exchanges are PDF-only</td></tr>
+          <tr><td>Quality gates</td><td class="yes">computed</td><td>761 companies, 9 of 12 gates live</td></tr>
+          <tr><td>Fundamentals</td><td class="yes">computed</td><td>760 companies via Yahoo — income, cash flow, balance sheet</td></tr>
+          <tr><td>Promoter pledge</td><td class="yes">computed</td><td>515 disclosures from NSE encumbrance filings</td></tr>
+          <tr><td>3 of 12 gates</td><td class="no">no data</td><td>receivables, related party, contingent liabilities</td></tr>
+          <tr><td>G.E.M. scores</td><td class="no">not built</td><td>fundamentals now in place; ranking is the next stage</td></tr>
           <tr><td>Portfolio + journal</td><td class="no">stage 5</td><td>no holdings entered yet</td></tr>
           <tr><td>Thresholds behind stages</td><td class="no">stage 3</td><td>reasoned defaults, not yet calibrated</td></tr>
         </tbody>
@@ -683,6 +709,38 @@ if (G.available) {
   document.getElementById("screening").innerHTML =
     `<div class="pending"><div class="tag">Not yet run</div>
      <p>Run <code>investo gates</code> to screen the universe.</p></div>`;
+}
+
+/* -------------------------------------------------------- cleared names */
+const cleared = (G.cleared_theme || []);
+if (cleared.length) {
+  document.getElementById("cleared-count").textContent =
+    `${cleared.length} of ${G.cleared_total} in your themes`;
+
+  document.getElementById("cleared").innerHTML = `
+    <div class="board">${cleared.map(c => {
+      const cap = c.mcap_cr == null ? "—"
+        : c.mcap_cr >= 1000 ? `${(c.mcap_cr / 1000).toFixed(1)}k` : c.mcap_cr.toFixed(0);
+      // Pledge is shown even when low: it is the figure that moved two names
+      // out of this list, and a blank means undisclosed, not zero.
+      const pl = c.pledge_pct == null
+        ? `<span class="pl-none">n/d</span>`
+        : `<span style="color:${c.pledge_pct > 10 ? "var(--p-warn)" : "var(--p-muted)"}">${c.pledge_pct.toFixed(0)}%</span>`;
+      return `
+        <div class="namerow">
+          <div>
+            <div class="nm-tic">${c.ticker}</div>
+            <div class="nm-th">${c.theme}</div>
+          </div>
+          <div class="nm-cap">${cap}<small>₹ cr</small></div>
+          <div class="nm-pl">${pl}<small style="display:block;font-size:8.5px;color:var(--p-muted)">pledge</small></div>
+        </div>`;
+    }).join("")}</div>
+    <div class="disclaimer" style="margin-top:10px">
+      Ordered by size, smallest first. Cleared means it survived the fraud and
+      balance-sheet filters — not that it is worth buying. "n/d" means no pledge
+      disclosure was filed, which is unknown rather than zero.
+    </div>`;
 }
 
 /* --------------------------------------------------------------- the board */

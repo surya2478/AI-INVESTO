@@ -3878,10 +3878,182 @@
     "available": true,
     "as_of": "2026-08-14",
     "verdicts": {
-      "FLAGGED": 150,
-      "UNVETTED": 572,
-      "REJECTED": 39
+      "CLEARED": 327,
+      "FLAGGED": 233,
+      "UNVETTED": 58,
+      "REJECTED": 143
     },
+    "cleared_total": 327,
+    "cleared_theme": [
+      {
+        "ticker": "AWHCL",
+        "theme": "Recycling & Circular Economy",
+        "mcap_cr": 1116.0,
+        "promoter_pct": 46.1,
+        "pledge_pct": 13.8
+      },
+      {
+        "ticker": "ROTO",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 1248.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "KRSNAA",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 1788.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "HPL",
+        "theme": "Grid & Power Transmission",
+        "mcap_cr": 2049.0,
+        "promoter_pct": 72.7,
+        "pledge_pct": 6.3
+      },
+      {
+        "ticker": "MOSCHIP",
+        "theme": "Semiconductors & Electronics Manufacturing",
+        "mcap_cr": 4097.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "PRAJIND",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 5911.0,
+        "promoter_pct": 32.8,
+        "pledge_pct": 16.3
+      },
+      {
+        "ticker": "BORORENEW",
+        "theme": "Solar & Renewables",
+        "mcap_cr": 8138.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "CLEAN",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 8892.0,
+        "promoter_pct": 51.3,
+        "pledge_pct": 5.8
+      },
+      {
+        "ticker": "RAILTEL",
+        "theme": "AI & Compute",
+        "mcap_cr": 9156.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "FINPIPE",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 10042.0,
+        "promoter_pct": 52.8,
+        "pledge_pct": 4.8
+      },
+      {
+        "ticker": "VOLTAMP",
+        "theme": "AI & Compute",
+        "mcap_cr": 10153.0,
+        "promoter_pct": 30.0,
+        "pledge_pct": 6.6
+      },
+      {
+        "ticker": "METROPOLIS",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 11588.0,
+        "promoter_pct": 48.9,
+        "pledge_pct": 2.1
+      },
+      {
+        "ticker": "GRAVITA",
+        "theme": "Energy Storage & BESS",
+        "mcap_cr": 13422.0,
+        "promoter_pct": 57.2,
+        "pledge_pct": 6.7
+      },
+      {
+        "ticker": "VINATIORGA",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 13939.0,
+        "promoter_pct": 74.3,
+        "pledge_pct": 1.4
+      },
+      {
+        "ticker": "KIRLOSBROS",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 15368.0,
+        "promoter_pct": 66.0,
+        "pledge_pct": 2.0
+      },
+      {
+        "ticker": "FINEORG",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 15774.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "SYNGENE",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 16211.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "ZENTEC",
+        "theme": "Defence & Space Technology",
+        "mcap_cr": 16534.0,
+        "promoter_pct": 48.9,
+        "pledge_pct": 8.5
+      },
+      {
+        "ticker": "JINDALSAW",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 16893.0,
+        "promoter_pct": 63.5,
+        "pledge_pct": 4.6
+      },
+      {
+        "ticker": "POLYMED",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 18389.0,
+        "promoter_pct": 62.4,
+        "pledge_pct": 5.3
+      },
+      {
+        "ticker": "HBLENGINE",
+        "theme": "Energy Storage & BESS",
+        "mcap_cr": 19218.0,
+        "promoter_pct": 59.1,
+        "pledge_pct": 12.6
+      },
+      {
+        "ticker": "DEEPAKNTR",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 23210.0,
+        "promoter_pct": 49.3,
+        "pledge_pct": 5.6
+      },
+      {
+        "ticker": "TATAELXSI",
+        "theme": "Semiconductors & Electronics Manufacturing",
+        "mcap_cr": 23521.0,
+        "promoter_pct": 43.9,
+        "pledge_pct": 9.4
+      },
+      {
+        "ticker": "AMBER",
+        "theme": "AI & Compute",
+        "mcap_cr": 25303.0,
+        "promoter_pct": null,
+        "pledge_pct": null
+      }
+    ],
     "companies": 761,
     "per_gate": [
       {
@@ -3892,6 +4064,27 @@
         "total": 761
       },
       {
+        "gate_name": "interest_coverage",
+        "passed": 631.0,
+        "failed": 92.0,
+        "unknown": 38.0,
+        "total": 761
+      },
+      {
+        "gate_name": "cash_conversion",
+        "passed": 544.0,
+        "failed": 86.0,
+        "unknown": 131.0,
+        "total": 761
+      },
+      {
+        "gate_name": "promoter_pledge",
+        "passed": 408.0,
+        "failed": 85.0,
+        "unknown": 268.0,
+        "total": 761
+      },
+      {
         "gate_name": "surveillance",
         "passed": 724.0,
         "failed": 37.0,
@@ -3899,21 +4092,21 @@
         "total": 761
       },
       {
-        "gate_name": "serial_dilution",
-        "passed": 28.0,
-        "failed": 2.0,
-        "unknown": 731.0,
-        "total": 761
-      },
-      {
         "gate_name": "sustained_losses",
-        "passed": 29.0,
-        "failed": 1.0,
-        "unknown": 731.0,
+        "passed": 726.0,
+        "failed": 31.0,
+        "unknown": 4.0,
         "total": 761
       },
       {
-        "gate_name": "interest_coverage",
+        "gate_name": "serial_dilution",
+        "passed": 727.0,
+        "failed": 20.0,
+        "unknown": 14.0,
+        "total": 761
+      },
+      {
+        "gate_name": "revenue_collapse",
         "passed": 29.0,
         "failed": 1.0,
         "unknown": 731.0,
@@ -3934,31 +4127,10 @@
         "total": 761
       },
       {
-        "gate_name": "promoter_pledge",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 761.0,
-        "total": 761
-      },
-      {
-        "gate_name": "cash_conversion",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 761.0,
-        "total": 761
-      },
-      {
         "gate_name": "related_party",
         "passed": 0.0,
         "failed": 0.0,
         "unknown": 761.0,
-        "total": 761
-      },
-      {
-        "gate_name": "revenue_collapse",
-        "passed": 30.0,
-        "failed": 0.0,
-        "unknown": 731.0,
         "total": 761
       },
       {
@@ -3976,6 +4148,16 @@
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
       },
       {
+        "ticker": "ABFRL.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
+        "ticker": "ABREL.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
+      },
+      {
         "ticker": "ACUTAAS.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
@@ -3991,9 +4173,24 @@
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
       },
       {
+        "ticker": "AEQUS.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
+        "ticker": "ALOKINDS.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
         "ticker": "APOLLO.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
+      },
+      {
+        "ticker": "APOLLO.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 27% over 2 years"
       },
       {
         "ticker": "ASKAUTOLTD.NS",
@@ -4006,6 +4203,11 @@
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
       },
       {
+        "ticker": "ATHERENERG.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
         "ticker": "BALAMINES.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
@@ -4016,14 +4218,29 @@
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
       },
       {
-        "ticker": "BLUESTARCO.NS",
+        "ticker": "BEML.NS",
         "gate_name": "serial_dilution",
-        "detail": "Share capital up 113% over 2 years"
+        "detail": "Shares outstanding up 100% over 2 years"
+      },
+      {
+        "ticker": "BEML.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
+      },
+      {
+        "ticker": "BIOCON.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 35% over 2 years"
       },
       {
         "ticker": "CEMPRO.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
+      },
+      {
+        "ticker": "COHANCE.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 50% over 2 years"
       },
       {
         "ticker": "CPPLUS.NS",
@@ -4041,14 +4258,79 @@
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
       },
       {
+        "ticker": "EMBDL.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 157% over 2 years"
+      },
+      {
+        "ticker": "EMBDL.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
+      },
+      {
         "ticker": "EMIL.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
       },
       {
+        "ticker": "FIRSTCRY.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
+        "ticker": "GMRAIRPORT.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 75% over 2 years"
+      },
+      {
+        "ticker": "GMRP&UI.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 29% over 2 years"
+      },
+      {
+        "ticker": "GMRP&UI.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
+      },
+      {
+        "ticker": "GOKULAGRO.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 100% over 2 years"
+      },
+      {
+        "ticker": "HCC.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 40% over 2 years"
+      },
+      {
+        "ticker": "HEMIPROP.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 4 of the last 4 quarters"
+      },
+      {
         "ticker": "HFCL.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
+      },
+      {
+        "ticker": "IDEA.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 116% over 2 years"
+      },
+      {
+        "ticker": "IDEA.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
+      },
+      {
+        "ticker": "INOXWIND.NS",
+        "gate_name": "serial_dilution",
+        "detail": "Shares outstanding up 31% over 2 years"
+      },
+      {
+        "ticker": "ITI.NS",
+        "gate_name": "sustained_losses",
+        "detail": "Loss-making in 3 of the last 4 quarters"
       },
       {
         "ticker": "JUSTDIAL.NS",
@@ -4059,118 +4341,8 @@
         "ticker": "KALYANKJIL.NS",
         "gate_name": "surveillance",
         "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "KIRLOSENG.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "LLOYDSENGG.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "LUMAXTECH.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "MANYAVAR.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "MSTCLTD.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "MTARTECH.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage IV)"
-      },
-      {
-        "ticker": "OLAELEC.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "PARAS.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "POWERGRID.NS",
-        "gate_name": "serial_dilution",
-        "detail": "Share capital up 33% over 2 years"
-      },
-      {
-        "ticker": "RBA.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "SHILPAMED.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "SPARC.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "STLTECH.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage IV)"
-      },
-      {
-        "ticker": "STLTECH.NS",
-        "gate_name": "sustained_losses",
-        "detail": "Loss-making in 4 of the last 4 quarters"
-      },
-      {
-        "ticker": "SUDEEPPHRM.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "TDPOWERSYS.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "THANGAMAYL.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-12 00:00:00 (SHORTTERM Stage I)"
-      },
-      {
-        "ticker": "UNIVCABLES.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "UTLSOLAR.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "WALCHANNAG.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "WEBELSOLAR.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
-      },
-      {
-        "ticker": "WOCKPHARMA.NS",
-        "gate_name": "surveillance",
-        "detail": "Under NSE surveillance since 2026-08-13 00:00:00 (LONGTERM Stage I)"
       }
     ],
-    "rejected_total": 39
+    "rejected_total": 77
   }
 }

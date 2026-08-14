@@ -164,10 +164,53 @@ def gate_payload() -> dict:
               FROM per_company GROUP BY 1
         """, [as_of]).df()
 
+        # The actual output: theme companies that survived every gate, smallest
+        # first, since that is where a multibagger can still start.
+        from engine.universe.theme_graph import load_theme_graph
+
+        theme_of: dict[str, str] = {}
+        for theme in load_theme_graph().themes:
+            for ticker in theme.india_tickers:
+                theme_of.setdefault(ticker, theme.name)
+
+        cleared = con.execute("""
+            WITH per AS (
+                SELECT security_id,
+                    max(CASE WHEN status='FAIL' AND gate_name IN
+                        ('surveillance','cash_conversion','serial_dilution','sustained_losses')
+                        THEN 1 ELSE 0 END) AS crit_fail,
+                    max(CASE WHEN status='FAIL' THEN 1 ELSE 0 END) AS any_fail,
+                    max(CASE WHEN status='UNKNOWN' AND gate_name IN
+                        ('surveillance','cash_conversion','serial_dilution','sustained_losses')
+                        THEN 1 ELSE 0 END) AS crit_unknown
+                  FROM gate_results WHERE as_of_date = ? GROUP BY security_id)
+            SELECT s.ticker, s.name, round(s.market_cap/1e7, 0) AS mcap_cr,
+                   round(o.promoter_pct, 1) AS promoter_pct,
+                   round(o.promoter_pledge_pct, 1) AS pledge_pct
+              FROM per JOIN securities s ON s.security_id = per.security_id
+              LEFT JOIN ownership_pit o ON o.security_id = per.security_id
+             WHERE crit_fail = 0 AND any_fail = 0 AND crit_unknown = 0
+             ORDER BY s.market_cap
+        """, [as_of]).df()
+
+        cleared["theme"] = cleared["ticker"].map(theme_of)
+        in_theme = cleared[cleared["theme"].notna()].copy()
+
         return {
             "available": True,
             "as_of": str(as_of)[:10],
             "verdicts": {r.verdict: int(r.n) for r in verdicts.itertuples()},
+            "cleared_total": int(len(cleared)),
+            "cleared_theme": [
+                {
+                    "ticker": r.ticker.replace(".NS", ""),
+                    "theme": r.theme,
+                    "mcap_cr": None if pd.isna(r.mcap_cr) else float(r.mcap_cr),
+                    "promoter_pct": None if pd.isna(r.promoter_pct) else float(r.promoter_pct),
+                    "pledge_pct": None if pd.isna(r.pledge_pct) else float(r.pledge_pct),
+                }
+                for r in in_theme.head(24).itertuples()
+            ],
             "companies": int(con.execute(
                 "SELECT count(DISTINCT security_id) FROM gate_results WHERE as_of_date = ?",
                 [as_of]).fetchone()[0]),
