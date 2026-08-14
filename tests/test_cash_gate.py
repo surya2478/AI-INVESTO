@@ -20,14 +20,15 @@ def annual(**metrics) -> pd.DataFrame:
     return pd.DataFrame(metrics, index=index)
 
 
-def ctx(annual_frame=None, ownership=None) -> GateContext:
+def ctx(annual_frame=None, ownership=None, industry="Capital Goods") -> GateContext:
     return GateContext(
         security_id=1, ticker="TEST.NS", as_of=AS_OF,
         quarterly=pd.DataFrame(),
-        annual_frame=annual_frame if annual_frame is not None else pd.DataFrame(),
         prices=pd.DataFrame(), events=pd.DataFrame(),
         market_cap=5_000 * CR,
+        annual_frame=annual_frame if annual_frame is not None else pd.DataFrame(),
         ownership=ownership if ownership is not None else pd.DataFrame(),
+        industry=industry,
     )
 
 
@@ -66,6 +67,38 @@ def test_loss_making_company_is_not_judged_on_conversion():
 def test_short_history_is_unknown_not_pass():
     frame = annual(cfo=[100 * CR, 120 * CR], pat=[90 * CR, 100 * CR])
     assert gates.gate_cash_conversion(ctx(frame)).status == UNKNOWN
+
+
+def test_lender_is_exempt_from_cash_conversion():
+    """The 360ONE/Aadhar/Aavas case.
+
+    A lender's loan disbursements are an operating outflow, so a growing book
+    produces negative operating cash flow by construction. 60 of the first 146
+    failures were financials being penalised for behaving like financials.
+    """
+    frame = annual(
+        cfo=[-1_000 * CR] * 4,
+        pat=[500 * CR] * 4,
+    )
+    assert gates.gate_cash_conversion(ctx(frame, industry="Financial Services")).status == UNKNOWN
+    # The same numbers on a manufacturer remain a genuine failure.
+    assert gates.gate_cash_conversion(ctx(frame, industry="Capital Goods")).status == FAIL
+
+
+# ------------------------------------------------------------------ dilution
+def test_dilution_uses_share_count_not_rupee_capital():
+    """Blue Star: share count rose 6.7%, the rupee capital measure said 113%."""
+    frame = annual(share_count=[192_627_776, 205_614_788, 205_614_788, 205_592_970])
+    result = gates.gate_serial_dilution(ctx(frame))
+    assert result.status == PASS
+    assert result.observed == pytest.approx(0.0, abs=0.5)
+
+
+def test_genuine_dilution_still_fails():
+    frame = annual(share_count=[100_000_000, 110_000_000, 140_000_000, 150_000_000])
+    result = gates.gate_serial_dilution(ctx(frame))
+    assert result.status == FAIL
+    assert result.observed == pytest.approx(36.4, rel=0.02)
 
 
 # -------------------------------------------------------------------- pledge

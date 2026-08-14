@@ -205,10 +205,55 @@ def fetch_cashflow(ticker: str) -> pd.DataFrame:
     return out.drop_duplicates(subset=["ticker", "period_end", "metric"], keep="first")
 
 
+# Balance-sheet lines. Share COUNT rather than share capital in rupees: a face
+# value change moves the rupee figure without issuing a single share, and the
+# rupee measure claimed Blue Star diluted 113% when its share count rose 6.7%.
+BALANCE_MAP = {
+    "Ordinary Shares Number": "share_count",
+    "Common Stock Equity": "net_worth",
+    "Total Debt": "total_debt",
+}
+
+
+def fetch_balance(ticker: str) -> pd.DataFrame:
+    """Annual balance-sheet lines used by the dilution gate."""
+    try:
+        frame = yf.Ticker(ticker).balance_sheet
+    except Exception as exc:  # noqa: BLE001
+        log.debug("yahoo balance sheet failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for label, metric in BALANCE_MAP.items():
+        if label not in frame.index:
+            continue
+        for period, value in frame.loc[label].items():
+            if pd.isna(value):
+                continue
+            rows.append({
+                "ticker": ticker,
+                "period_end": pd.Timestamp(period).date(),
+                "period_type": "A",
+                "metric": metric,
+                "value": float(value),
+                "unit": "shares" if metric == "share_count" else "INR",
+                "source": "yfinance",
+            })
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(subset=["ticker", "period_end", "metric"], keep="first")
+
+
 def fetch_all(ticker: str) -> pd.DataFrame:
-    """Quarterly income, annual income and annual cash-flow lines."""
+    """Quarterly income, annual income, annual cash flow and balance sheet."""
     frames = [
-        f for f in (fetch_quarterly(ticker), fetch_annual(ticker), fetch_cashflow(ticker))
+        f for f in (fetch_quarterly(ticker), fetch_annual(ticker),
+                    fetch_cashflow(ticker), fetch_balance(ticker))
         if not f.empty
     ]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

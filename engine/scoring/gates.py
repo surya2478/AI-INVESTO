@@ -55,6 +55,12 @@ class GateContext:
     # Defaults last: cash flow is annual-only, and ownership is a separate feed.
     annual_frame: pd.DataFrame = field(default_factory=pd.DataFrame)
     ownership: pd.DataFrame | None = None   # promoter holding and pledge
+    industry: str = ""
+
+    @property
+    def is_financial(self) -> bool:
+        """Banks, NBFCs and insurers, whose cash-flow shape differs by nature."""
+        return self.industry in ("Financial Services", "Insurance")
 
     def series(self, metric: str) -> pd.Series:
         """Quarterly values for one metric, oldest first."""
@@ -113,21 +119,34 @@ def gate_liquidity(ctx: GateContext) -> GateResult:
 
 
 def gate_serial_dilution(ctx: GateContext) -> GateResult:
-    """Repeated share issuance transfers value away from existing holders."""
-    capital = ctx.series("equity_capital")
-    if len(capital) < 8:
-        return GateResult("serial_dilution", UNKNOWN,
-                          detail="Needs 8 quarters of equity capital history")
-    then, now = float(capital.iloc[-8]), float(capital.iloc[-1])
+    """Repeated share issuance transfers value away from existing holders.
+
+    Measured on SHARE COUNT, not share capital in rupees. A change of face
+    value moves the rupee figure without a single share being issued: the rupee
+    measure reported Blue Star as diluting 113% over two years when its share
+    count rose 6.7%. Falls back to the rupee measure only where no count exists.
+    """
+    counts = ctx.annual("share_count")
+    if len(counts) >= 3:
+        then, now = float(counts.iloc[-3]), float(counts.iloc[-1])
+        label, basis = "Shares outstanding", "over 2 years"
+    else:
+        capital = ctx.series("equity_capital")
+        if len(capital) < 8:
+            return GateResult("serial_dilution", UNKNOWN,
+                              detail="Needs 3 years of share count or 8 quarters of capital")
+        then, now = float(capital.iloc[-8]), float(capital.iloc[-1])
+        label, basis = "Share capital", "over 2 years (no share count available)"
+
     if then <= 0:
         return GateResult("serial_dilution", UNKNOWN, detail="No usable base period")
 
     growth = (now / then - 1.0) * 100.0
     if growth > 25.0:
         return GateResult("serial_dilution", FAIL, growth, 25.0,
-                          f"Share capital up {growth:.0f}% over 2 years")
+                          f"{label} up {growth:.0f}% {basis}")
     return GateResult("serial_dilution", PASS, growth, 25.0,
-                      f"Share capital {growth:+.0f}% over 2 years")
+                      f"{label} {growth:+.1f}% {basis}")
 
 
 def gate_interest_coverage(ctx: GateContext) -> GateResult:
@@ -186,6 +205,17 @@ def gate_cash_conversion(ctx: GateContext) -> GateResult:
     pre-inflection companies worth finding. The signal is the DIVERGENCE:
     profits reported, cash absent.
     """
+    # Lenders are exempt, not favoured. For a bank or NBFC, money lent out IS an
+    # operating outflow, so a growing loan book produces years of negative
+    # operating cash flow by construction. Judging them on this rejected 360ONE,
+    # Aadhar Housing and Aavas for doing exactly what a lender does -- 60 of the
+    # first 146 failures were financials. The gate does not model their
+    # economics, so it declines to answer rather than answering wrongly.
+    if ctx.is_financial:
+        return GateResult("cash_conversion", UNKNOWN, detail=(
+            "Lending outflows make operating cash flow negative by design; "
+            "this test does not describe a financial company"))
+
     cfo = ctx.annual("cfo")
     pat = ctx.annual("pat")
     if len(cfo) < 3 or len(pat) < 3:
@@ -318,9 +348,12 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
           FROM corporate_events WHERE security_id = ? AND event_date <= ?
     """, [security_id, as_of]).df()
 
-    cap = con.execute(
-        "SELECT market_cap FROM securities WHERE security_id = ?", [security_id]
+    profile = con.execute(
+        "SELECT market_cap, coalesce(industry, '') FROM securities WHERE security_id = ?",
+        [security_id],
     ).fetchone()
+    cap = (profile[0],) if profile else None
+    industry = profile[1] if profile else ""
 
     ownership = con.execute("""
         SELECT quarter_end, filing_date, promoter_pct, promoter_pledge_pct, public_pct
@@ -333,6 +366,7 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
         quarterly=quarterly, annual_frame=annual_frame, prices=prices, events=events,
         market_cap=float(cap[0]) if cap and cap[0] else None,
         ownership=ownership,
+        industry=industry,
     )
 
 
