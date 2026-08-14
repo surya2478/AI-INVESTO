@@ -41,7 +41,8 @@ PDF_ERA_START = dt.date(2025, 1, 1)
 BATCH_JOB = "pdf_backfill"
 
 
-def candidate_companies(con, batch_size: int, restart: bool = False) -> pd.DataFrame:
+def candidate_companies(con, batch_size: int, restart: bool = False,
+                        themes_only: bool = False) -> pd.DataFrame:
     """Next companies to process, theme members first.
 
     Two deliberate choices, both learned from the first batch:
@@ -86,6 +87,8 @@ def candidate_companies(con, batch_size: int, restart: bool = False) -> pd.DataF
 
     frame = frame[~frame["security_id"].isin(processed)].copy()
     frame["priority"] = frame["ticker"].map(lambda t: 0 if t in theme_tickers else 1)
+    if themes_only:
+        frame = frame[frame["priority"] == 0]
     return (frame.sort_values(["priority", "ticker"])
             .head(batch_size)
             .drop(columns=["industry", "priority"])
@@ -223,19 +226,22 @@ def _write_facts(con, security_id: int, facts: pd.DataFrame) -> None:
 
 
 def run_batch(con, batch_size: int = 10, model: str | None = None,
-              restart: bool = False) -> dict:
+              restart: bool = False, themes_only: bool = False,
+              progress=None) -> dict:
     """Process one batch and report its quality."""
     provider = BSEPDFProvider(model=model)
-    companies = candidate_companies(con, batch_size, restart)
+    companies = candidate_companies(con, batch_size, restart, themes_only)
     if companies.empty:
         return {"companies": 0, "message": "backfill complete — no companies left"}
 
     started = dt.datetime.now()
     outcomes: list[dict] = []
-    for record in companies.itertuples():
-        outcomes.extend(
-            process_company(con, provider, record.security_id, record.exchange_symbol)
-        )
+    for index, record in enumerate(companies.itertuples(), 1):
+        results = process_company(con, provider, record.security_id, record.exchange_symbol)
+        outcomes.extend(results)
+        if progress:
+            clean = sum(1 for r in results if r.get("status") == "CLEAN")
+            progress(index, len(companies), record.exchange_symbol, clean, len(results))
         con.execute("DELETE FROM job_state WHERE job = ?", [BATCH_JOB])
         con.execute("""
             INSERT INTO job_state (job, cursor_date, detail, updated_at)

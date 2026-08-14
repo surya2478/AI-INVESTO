@@ -354,6 +354,9 @@ def ingest_pdf(
     batch: int = typer.Option(10, help="Companies per batch"),
     model: str = typer.Option(None, help="OpenRouter model id; overrides config"),
     restart: bool = typer.Option(False, help="Start from the first company again"),
+    themes_only: bool = typer.Option(
+        False, help="Restrict to theme-graph companies — the investable universe"
+    ),
 ) -> None:
     """Extract post-2024 quarters from result PDFs, one batch at a time.
 
@@ -365,8 +368,17 @@ def ingest_pdf(
 
     con = db.connect()
     try:
-        console.print(f"processing {batch} companies...")
-        result = run_batch(con, batch_size=batch, model=model, restart=restart)
+        scope = "theme companies" if themes_only else "companies"
+        console.print(f"processing up to {batch} {scope}...\n")
+
+        def show(index, total, symbol, clean, attempted):
+            mark = "green" if clean == attempted and attempted else (
+                "yellow" if clean else "red")
+            console.print(f"  [{index:>3}/{total}] {symbol:<16} "
+                          f"[{mark}]{clean}/{attempted} clean[/{mark}]")
+
+        result = run_batch(con, batch_size=batch, model=model, restart=restart,
+                           themes_only=themes_only, progress=show)
 
         if result.get("message"):
             console.print(f"[green]{result['message']}[/green]")
