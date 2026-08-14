@@ -326,6 +326,29 @@ def consistency_check(values: dict, tolerance: float = 0.01) -> list[str]:
     return problems
 
 
+def _flexible_date(value) -> dt.date | None:
+    """Parse a date the model echoed back, in whatever form it chose.
+
+    The schema asks for YYYY-MM-DD and most models comply, but not all: Qwen
+    returns "31 December 2024". Since this value exists purely to verify the
+    model read the right column, rejecting it on formatting would discard a
+    correct extraction over punctuation.
+    """
+    if isinstance(value, dt.date):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    text = value.strip()
+    for fmt in ("%Y-%m-%d", "%d %B %Y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y",
+                "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y"):
+        try:
+            return dt.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def adjacent_column_check(
     values: dict, prior_values: dict, threshold: float = 0.6
 ) -> str | None:
@@ -414,6 +437,66 @@ class BSEPDFProvider:
         self.model = model or settings.LLM_MODEL
         self._session: cr.Session | None = None
         self._openai = None
+        self._caps: dict | None = None
+
+    # --------------------------------------------------------- capabilities
+    def capabilities(self) -> dict:
+        """What this model can actually accept, from OpenRouter's model list.
+
+        Models differ in ways that decide how the request must be shaped, and
+        guessing produces a bare 404 or a silently unenforced schema:
+
+          * no `file` modality  -> the `native` PDF engine is unavailable, so
+            the document has to be parsed upstream instead.
+          * no `tools`          -> forced tool-calling is impossible and the
+            weaker `response_format` path is the only option.
+
+        Qwen2.5-VL-72B is exactly this case: image-only input, no tool support.
+        """
+        if self._caps is None:
+            import urllib.request
+
+            try:
+                request = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"User-Agent": "AI-Investo/0.1"},
+                )
+                with urllib.request.urlopen(request, timeout=45) as handle:
+                    models = json.load(handle)["data"]
+            except Exception as exc:  # noqa: BLE001 - fall back to assuming the best
+                log.warning("could not read model capabilities: %s", exc)
+                self._caps = {"tools": True, "file": True, "known": False}
+                return self._caps
+
+            entry = next((m for m in models if m["id"] == self.model), None)
+            if entry is None:
+                raise ProviderError(
+                    f"{self.model} is not offered by OpenRouter. Check the id at "
+                    "https://openrouter.ai/models"
+                )
+            modalities = (entry.get("architecture") or {}).get("input_modalities") or []
+            supported = entry.get("supported_parameters") or []
+            self._caps = {
+                "tools": "tools" in supported,
+                "structured_outputs": "structured_outputs" in supported,
+                "file": "file" in modalities,
+                "image": "image" in modalities,
+                "known": True,
+            }
+        return self._caps
+
+    def pdf_engine(self) -> str:
+        """`native` only where the model really accepts files.
+
+        Asking for `native` on an image-only model silently falls back to
+        OpenRouter's default, which bills mistral-ocr at $2/1,000 pages without
+        saying so. Choosing it explicitly at least makes the cost visible.
+        """
+        configured = settings.PDF_ENGINE
+        if configured == "native" and not self.capabilities().get("file", True):
+            log.info("%s has no file input; using mistral-ocr", self.model)
+            return "mistral-ocr"
+        return configured
 
     # ------------------------------------------------------------- transport
     def _bse(self) -> cr.Session:
@@ -605,13 +688,41 @@ class BSEPDFProvider:
             f"used by returning its period in period_start and period_end."
         )
 
+        # Forced tool-calling wherever the model supports it. Measured on
+        # anthropic/claude-sonnet-5 via OpenRouter: response_format with
+        # strict:true was accepted and then ignored -- replies invented a
+        # `company` field, returned "Rs in Lakhs" where an enum was required, and
+        # nested other_income as an object. Providers enforce tool input schemas
+        # far more consistently, and forcing the call leaves no free-text path.
+        schema = strict_schema(QuarterlyFinancials)
+        if self.capabilities().get("tools", True):
+            shape = {
+                "tools": [{
+                    "type": "function",
+                    "function": {
+                        "name": TOOL_NAME,
+                        "description": "Record the extracted figures for one reporting period.",
+                        "parameters": schema,
+                    },
+                }],
+                "tool_choice": {"type": "function", "function": {"name": TOOL_NAME}},
+            }
+        else:
+            # Only for models without tool support, Qwen2.5-VL-72B among them.
+            shape = {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "quarterly_financials",
+                                    "strict": True, "schema": schema},
+                },
+            }
+
         try:
             # No `temperature`: Claude models on OpenRouter do not list it as a
             # supported parameter (reasoning models fix it), and with
             # require_parameters set, sending it disqualifies every endpoint and
             # returns a bare 404. The strict schema plus an explicit prompt does
             # the work determinism would have.
-            # Forced tool-calling, NOT response_format. Measured on
             # anthropic/claude-sonnet-5 via OpenRouter: response_format with
             # strict:true was accepted and then ignored -- replies invented a
             # `company` field, returned "Rs in Lakhs" where an enum was required,
@@ -621,15 +732,7 @@ class BSEPDFProvider:
             response = client.chat.completions.create(
                 model=self.model,
                 max_tokens=8000,
-                tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": TOOL_NAME,
-                        "description": "Record the extracted figures for one reporting period.",
-                        "parameters": strict_schema(QuarterlyFinancials),
-                    },
-                }],
-                tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
+                **shape,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": [
@@ -642,7 +745,7 @@ class BSEPDFProvider:
                     # 'native' avoids OpenRouter's mistral-ocr default, which
                     # bills $2/1,000 pages to OCR documents that are already text.
                     "plugins": [{"id": "file-parser",
-                                 "pdf": {"engine": settings.PDF_ENGINE}}],
+                                 "pdf": {"engine": self.pdf_engine()}}],
                     # Refuse to silently route to an endpoint that ignores the
                     # schema; an unvalidated blob is worse than a clear failure.
                     "provider": {"require_parameters": True},
@@ -705,8 +808,13 @@ class BSEPDFProvider:
         stored — silently keeping it is how nine-month figures end up scored as
         quarterly ones.
         """
-        got_end = dt.date.fromisoformat(extracted.period_end)
-        got_start = dt.date.fromisoformat(extracted.period_start)
+        got_end = _flexible_date(extracted.period_end)
+        got_start = _flexible_date(extracted.period_start)
+        if got_end is None or got_start is None:
+            raise ProviderError(
+                f"{symbol}: unparseable period "
+                f"{extracted.period_start!r}..{extracted.period_end!r}"
+            )
         span = (got_end - got_start).days
 
         if got_end != expected_end:
