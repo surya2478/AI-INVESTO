@@ -22,7 +22,12 @@ from curl_cffi import requests as cr
 
 from engine.config import settings as settings_module
 from engine.providers.base import ProviderError
-from engine.providers.pdf_extractor import BSE_API, BSEPDFProvider, HEADERS
+from engine.providers.pdf_extractor import (
+    BSE_API,
+    BSEPDFProvider,
+    HEADERS,
+    consistency_check,
+)
 from engine.storage import db
 
 # A metric matches if it is within this relative distance of the XBRL value.
@@ -33,9 +38,15 @@ PASS_THRESHOLD = 0.95
 
 COMPARE_METRICS = [
     "revenue", "other_income", "total_income", "employee_cost", "finance_cost",
-    "depreciation", "other_expenses", "total_expenses", "pbt", "tax_expense",
-    "pat", "eps_basic",
+    "depreciation", "total_expenses", "pbt", "tax_expense", "pat", "eps_basic",
 ]
+
+# Reported alongside the score but excluded from it: XBRL defines other_expenses
+# as a residual while the statement prints a named line, so the two disagree by
+# construction on companies that itemise. Both models read the printed line
+# consistently. Nothing downstream consumes it -- EBITDA comes from pbt,
+# finance_cost, depreciation and other_income.
+INFORMATIONAL_METRICS = ["other_expenses"]
 
 
 def bse_scrip_map() -> dict[str, str]:
@@ -165,8 +176,16 @@ def main() -> int:
             result = compare(truth, got_series)
             matched, compared = int(result.match.sum()), len(result)
             cost = usage.get("cost_usd") or 0.0
+
+            # Would we have known this was wrong WITHOUT the XBRL reference?
+            # That is what matters for the thousands of companies where no
+            # reference exists.
+            problems = consistency_check(got_series.to_dict())
+            flag = "self-check FAILED" if problems else "self-check ok"
             print(f"  {symbol:<14} {period_end}  {matched}/{compared} within "
-                  f"{TOLERANCE:.1%}  ${cost:.4f}  [{name[:38]}]")
+                  f"{TOLERANCE:.1%}  ${cost:.4f}  {flag}  [{name[:30]}]")
+            for problem in problems:
+                print(f"      arithmetic  {problem}")
             for _, row in result[~result.match].iterrows():
                 print(f"      MISMATCH {row.metric:<16} xbrl={row.expected:>18,.0f} "
                       f"pdf={row.actual if pd.notna(row.actual) else float('nan'):>18,.0f} "
@@ -176,7 +195,8 @@ def main() -> int:
 
             all_results.append({"symbol": symbol, "period_end": period_end,
                                 "matched": matched, "compared": compared,
-                                "cost_usd": cost, "error": ""})
+                                "cost_usd": cost, "self_check_failed": bool(problems),
+                                "error": ""})
 
     if not all_results:
         print("\nNothing could be compared.", file=sys.stderr)

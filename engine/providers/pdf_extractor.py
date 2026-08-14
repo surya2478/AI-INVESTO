@@ -151,7 +151,13 @@ class QuarterlyFinancials(BaseModel):
     total_expenses: float | None = None
     exceptional_items: float | None = None
     pbt: float | None = Field(default=None, description="Profit before tax")
-    tax_expense: float | None = Field(default=None, description="Total tax expense")
+    current_tax: float | None = Field(default=None, description="Current tax charge only")
+    deferred_tax: float | None = Field(default=None, description="Deferred tax charge only")
+    tax_expense: float | None = Field(
+        default=None,
+        description="Total tax expense. If the statement shows only current and "
+                    "deferred components, report both above and leave this null.",
+    )
     pat: float | None = Field(default=None, description="Profit after tax for the period")
     eps_basic: float | None = Field(default=None, description="Basic EPS in rupees, NOT scaled by amounts_in")
     eps_diluted: float | None = Field(default=None, description="Diluted EPS in rupees, NOT scaled by amounts_in")
@@ -187,6 +193,15 @@ Further rules:
 - Report expenses as positive numbers, matching how the statement prints them.
 - Use null for any line the statement does not report. Never infer, derive, or
   compute a missing value from other lines.
+- revenue is "Revenue from operations" ONLY. Do not add other income to it, and
+  do not report total income in its place.
+- EPS is for the SAME three-month column as everything else, never the
+  year-to-date or full-year EPS. Where basic EPS is split between continuing and
+  discontinued operations, report the total.
+- If the statement shows only current and deferred tax, report those two and
+  leave tax_expense null; do not add them up yourself.
+- other_expenses is the single line labelled "Other expenses". If the statement
+  splits it into several named lines, report their sum.
 
 OUTPUT FORMAT: reply with the JSON object and nothing else. No preamble, no
 commentary, no markdown code fences, no notes after it. Put anything you would
@@ -221,6 +236,88 @@ def strict_schema(model: type[BaseModel]) -> dict:
         return node
 
     return tighten(schema)
+
+
+EXPENSE_COMPONENTS = (
+    "materials_cost", "purchases_stock_in_trade", "inventory_change",
+    "employee_cost", "finance_cost", "depreciation",
+)
+
+
+def reconcile(values: dict) -> dict:
+    """Derive the lines that transcription gets wrong, from ones it gets right.
+
+    Two metrics were consistently misread by BOTH models tested, for structural
+    reasons rather than model weakness:
+
+    * `other_expenses` -- statements split it into sub-lines (project costs,
+      services, power and fuel), and a reader naturally picks one. XBRL treats
+      it as the residual, and its components sum exactly to total_expenses.
+      Recomputing it as that residual matches the reference by construction.
+    * `tax_expense` -- statements often print only current and deferred tax.
+      One model summed them, the other reported current only. Summing is
+      arithmetic, so it should not be delegated.
+
+    Derived values are used ONLY where the inputs are present; nothing is
+    invented from a partial statement.
+    """
+    out = dict(values)
+
+    if out.get("tax_expense") is None:
+        current, deferred = out.get("current_tax"), out.get("deferred_tax")
+        if current is not None or deferred is not None:
+            out["tax_expense"] = (current or 0.0) + (deferred or 0.0)
+
+    # NOT derived: other_expenses. Recomputing it as total_expenses minus the
+    # other components was tried and measured, and it made accuracy worse
+    # (Sonnet 93.3% -> 90.0%): TD Power came out negative, Siemens roughly
+    # doubled. The PDF's component set does not match XBRL's, so the residual
+    # absorbs whatever the statement itemised separately.
+    #
+    # The two sources simply define the line differently -- XBRL treats it as a
+    # residual, the statement prints a named line -- and neither is wrong. It is
+    # excluded from the accuracy comparison for that reason, and nothing
+    # downstream consumes it: EBITDA derives from pbt, finance_cost,
+    # depreciation and other_income.
+
+    return out
+
+
+def consistency_check(values: dict, tolerance: float = 0.01) -> list[str]:
+    """Arithmetic identities a results statement must satisfy.
+
+    This is the guard that does not need ground truth. A statement where
+    revenue + other income does not equal total income has been misread, and
+    that is detectable at extraction time for every company -- including the
+    thousands we will never have XBRL for.
+    """
+    problems = []
+
+    def close(a, b, label):
+        if a is None or b is None:
+            return
+        scale = max(abs(a), abs(b), 1.0)
+        if abs(a - b) / scale > tolerance:
+            problems.append(f"{label}: {a:,.0f} vs {b:,.0f}")
+
+    revenue, other_income = values.get("revenue"), values.get("other_income")
+    if revenue is not None and other_income is not None:
+        close(values.get("total_income"), revenue + other_income, "total_income != revenue + other_income")
+
+    components = [values.get(k) for k in EXPENSE_COMPONENTS] + [values.get("other_expenses")]
+    if all(c is not None for c in components):
+        close(values.get("total_expenses"), sum(components), "total_expenses != sum(components)")
+
+    income, expenses = values.get("total_income"), values.get("total_expenses")
+    if income is not None and expenses is not None:
+        expected = income - expenses + (values.get("exceptional_items") or 0.0)
+        close(values.get("pbt"), expected, "pbt != income - expenses")
+
+    pbt, tax = values.get("pbt"), values.get("tax_expense")
+    if pbt is not None and tax is not None:
+        close(values.get("pat"), pbt - tax, "pat != pbt - tax")
+
+    return problems
 
 
 def _parse_announcement_date(value) -> dt.date | None:
@@ -578,9 +675,11 @@ class BSEPDFProvider:
                 f"({got_start} to {got_end}) — likely the cumulative column"
             )
 
+        values = reconcile(extracted.model_dump())
+
         multiplier = UNIT_TO_RUPEES[extracted.amounts_in]
         rows = []
-        for metric, value in extracted.model_dump().items():
+        for metric, value in values.items():
             if value is None or metric in {
                 "period_start", "period_end", "basis", "amounts_in",
                 "audited", "extraction_notes",
