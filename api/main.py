@@ -153,8 +153,19 @@ def company(ticker: str) -> dict:
          ORDER BY o.date
     """, [symbol])
 
+    from engine.features import security_trend
+    from engine.orders import company_orders
+
+    con = db.connect(read_only=True)
+    try:
+        trend = security_trend.for_company(con, symbol)
+        orders = company_orders(con, symbol)
+    finally:
+        con.close()
+
     return {"profile": profile[0], "gates": gates,
             "pillars": pillars[0] if pillars else None,
+            "trend": trend, "orders": orders,
             "financials": financials, "prices": prices,
             "disclaimer": "Research output. Not investment advice."}
 

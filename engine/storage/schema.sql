@@ -161,6 +161,22 @@ CREATE TABLE IF NOT EXISTS filing_events (
     PRIMARY KEY (security_id, period_end, filing_date)
 );
 
+-- Order wins and disclosed backlog, parsed from announcement text.
+-- ORDER_BOOK is a stock (outstanding backlog), ORDER_WIN is a flow (one
+-- contract). They are never summed: execution burns the book down, so adding
+-- wins to it would double-count work already counted.
+CREATE TABLE IF NOT EXISTS order_events (
+    security_id  BIGINT  NOT NULL,
+    event_date   DATE    NOT NULL,
+    kind         VARCHAR NOT NULL,        -- ORDER_BOOK | ORDER_WIN
+    value_cr     DOUBLE,                  -- NULL where the text carried no figure
+    headline     VARCHAR,
+    pdf_url      VARCHAR,
+    source       VARCHAR,
+    ingested_at  TIMESTAMP DEFAULT current_timestamp,
+    PRIMARY KEY (security_id, event_date, kind, headline)
+);
+
 -- ---------------------------------------------------------------- theme graph
 CREATE TABLE IF NOT EXISTS themes (
     theme_id     VARCHAR PRIMARY KEY,

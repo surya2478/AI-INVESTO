@@ -351,8 +351,42 @@ function openCompany(ticker) {
         </div>`;
     }
 
+    // Trend: the stock's own stage, read against the theme's. Shown above the
+    // score because "already run" and "still basing" change what you do next.
+    const tr = d.trend;
+    const trendHtml = tr ? `
+      <div class="card"><div class="tag">Price trend</div>
+        <div style="margin-top:6px"><span class="pill st-${tr.stage}">${tr.stage}</span>
+          <span class="bs" style="display:inline;margin-left:8px">confluence ${
+            tr.confluence != null ? tr.confluence.toFixed(0) : "—"}</span></div>
+        <div class="bs" style="margin-top:7px">
+          1m ${tr.mom_1m != null ? signed(tr.mom_1m,0)+"%" : "—"} ·
+          3m ${tr.mom_3m != null ? signed(tr.mom_3m,0)+"%" : "—"} ·
+          12m ${tr.mom_12m != null ? signed(tr.mom_12m,0)+"%" : "—"}<br>
+          ${tr.from_high != null ? Math.abs(tr.from_high).toFixed(0)+"% below its 3-year high" : ""}
+          ${tr.rs_12m != null ? " · " + signed(tr.rs_12m,0) + " pts vs the universe" : ""}
+        </div></div>` : "";
+
+    // Order book: forward visibility, and honest about how much is missing.
+    const ob = d.orders || {};
+    const orderHtml = (ob.available && (ob.order_book_cr || ob.wins_12m)) ? `
+      <div class="card"><div class="tag">Order book</div>
+        ${ob.order_book_cr ? `<div style="margin-top:6px;font-family:var(--mono);font-size:15px">
+          ₹${Math.round(ob.order_book_cr).toLocaleString("en-IN")} cr
+          ${ob.book_to_sales ? `<span style="color:var(--pos);font-size:12px">
+            · ${ob.book_to_sales.toFixed(1)}x sales</span>` : ""}</div>
+          <div class="bs">disclosed ${ob.order_book_as_of || ""}</div>` : ""}
+        <div class="bs" style="margin-top:6px">${ob.wins_12m || 0} order wins announced in 12
+          months${ob.unpriced_12m ? `, ${ob.unpriced_12m} without a value in the text` : ""}</div>
+        ${(ob.recent || []).length ? `<div style="margin-top:8px">${
+          ob.recent.slice(0,3).map(r => `<div class="gate">
+            <div class="gate-h"><span class="gate-n">${r.date}</span>
+            <span class="gate-s">${r.value_cr ? "₹"+Math.round(r.value_cr).toLocaleString("en-IN")+" cr" : "no value"}</span></div>
+            <div class="gate-d">${r.headline}</div></div>`).join("")}</div>` : ""}
+      </div>` : "";
+
     document.getElementById("sheet-body").innerHTML =
-      pillarHtml + gateHtml + finHtml + priceHtml +
+      trendHtml + orderHtml + pillarHtml + gateHtml + finHtml + priceHtml +
       `<div class="note">${d.disclaimer || ""}</div>`;
   }).catch(() => {
     document.getElementById("sheet-meta").textContent = "could not load this company";

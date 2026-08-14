@@ -409,6 +409,72 @@ def ingest_yahoo(
         con.close()
 
 
+@ingest_app.command("orders")
+def ingest_orders(
+    themes_only: bool = typer.Option(True, help="Theme companies only"),
+    limit: int = typer.Option(0, help="Cap companies (0 = all)"),
+) -> None:
+    """Parse order wins and disclosed order book from NSE announcement text."""
+    from engine.orders import book_to_sales, sync_orders
+    from engine.universe.builder import investable_universe
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        graph = load_theme_graph()
+        tickers = graph.india_universe() if themes_only else investable_universe(con)
+        if limit:
+            tickers = tickers[:limit]
+
+        console.print(f"parsing order announcements for [bold]{len(tickers)}[/bold] companies...")
+        started = dt.datetime.now()
+        state = {"hit": 0}
+
+        def show(index, total, symbol, n):
+            if n:
+                state["hit"] += 1
+            if index % 20 == 0 or index == total:
+                console.print(f"  {index:>4}/{total}  {state['hit']} with events")
+
+        result = sync_orders(con, tickers, progress=show)
+        console.print(f"\n[green]{result['stored']:,} events[/green] stored · "
+                      f"{result['with_book']} companies disclosed an order book")
+
+        stale = con.execute("""
+            SELECT count(DISTINCT security_id) FROM order_events
+             WHERE kind = 'ORDER_BOOK' AND value_cr IS NOT NULL
+               AND event_date < current_date - INTERVAL 450 DAY
+               AND security_id NOT IN (
+                   SELECT security_id FROM order_events
+                    WHERE kind = 'ORDER_BOOK' AND value_cr IS NOT NULL
+                      AND event_date >= current_date - INTERVAL 450 DAY)
+        """).fetchone()[0]
+        if stale:
+            console.print(f"[yellow]{stale} companies have only stale order-book "
+                          "disclosures (>15 months)[/yellow] — excluded, since a book "
+                          "from years ago is not forward visibility")
+
+        bts = book_to_sales(con)
+        if not bts.empty:
+            table = Table(title="Order book to sales — forward visibility")
+            for col in ("ticker", "book (₹cr)", "revenue (₹cr)", "years of sales", "as of"):
+                table.add_column(col, justify="right" if col != "ticker" else "left")
+            for _, r in bts.head(14).iterrows():
+                if pd.isna(r.book_to_sales):
+                    continue
+                tone = "green" if r.book_to_sales >= 2 else "yellow" if r.book_to_sales >= 1 else "white"
+                table.add_row(str(r.ticker).replace(".NS", ""),
+                              f"{r.order_book_cr:,.0f}",
+                              f"{r.revenue_cr:,.0f}" if pd.notna(r.revenue_cr) else "—",
+                              f"[{tone}]{r.book_to_sales:.1f}x[/{tone}]",
+                              str(r.event_date)[:10])
+            console.print(table)
+
+        db.log_ingest(con, run_id, "orders", None, "OK", result["stored"], None, started)
+    finally:
+        con.close()
+
+
 @ingest_app.command("pledge")
 def ingest_pledge(
     themes_only: bool = typer.Option(False, help="Theme companies only"),
@@ -538,6 +604,38 @@ def ingest_pdf(
             console.print(table)
 
         console.print(f"\nnext batch resumes after [cyan]{result['last_ticker']}[/cyan]")
+    finally:
+        con.close()
+
+
+@app.command()
+def trends() -> None:
+    """Compute daily/weekly/monthly stage and relative strength per company."""
+    from engine.features import security_trend
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        started = dt.datetime.now()
+        console.print("computing company trends...")
+        frame = security_trend.compute(con)
+        if frame.empty:
+            console.print("[yellow]not enough price history[/yellow]")
+            return
+        written = security_trend.store(con, frame)
+
+        table = Table(title="Stage distribution")
+        table.add_column("stage", style="cyan")
+        table.add_column("companies", justify="right")
+        table.add_column("median 12m", justify="right")
+        table.add_column("median RS", justify="right")
+        for stage, sub in frame.groupby("stage"):
+            table.add_row(stage, f"{len(sub):,}",
+                          f"{sub.mom_12m.median():+.0f}%" if sub.mom_12m.notna().any() else "—",
+                          f"{sub.rs_12m.median():+.0f}" if sub.rs_12m.notna().any() else "—")
+        console.print(table)
+        console.print(f"[green]{written:,} companies[/green] scored for trend")
+        db.log_ingest(con, run_id, "trends", None, "OK", written, None, started)
     finally:
         con.close()
 
