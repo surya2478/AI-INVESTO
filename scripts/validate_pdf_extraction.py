@@ -20,6 +20,7 @@ import sys
 import pandas as pd
 from curl_cffi import requests as cr
 
+from engine.config import settings as settings_module
 from engine.providers.base import ProviderError
 from engine.providers.pdf_extractor import BSE_API, BSEPDFProvider, HEADERS
 from engine.storage import db
@@ -90,6 +91,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--companies", type=int, default=3)
     parser.add_argument("--quarters", type=int, default=1, help="Quarters per company")
+    parser.add_argument("--model", default=None,
+                        help="OpenRouter model id; overrides INVESTO_LLM_MODEL")
     args = parser.parse_args()
 
     con = db.connect(read_only=True)
@@ -104,7 +107,8 @@ def main() -> int:
 
     print("building BSE scrip map...")
     isin_to_scrip = bse_scrip_map()
-    provider = BSEPDFProvider()
+    provider = BSEPDFProvider(model=args.model)
+    print(f"model: {provider.model}\n")
 
     all_results = []
     for ticker, group in facts.groupby("ticker"):
@@ -148,19 +152,24 @@ def main() -> int:
 
             try:
                 pdf_bytes, name = provider.fetch_statement_pdf(match.iloc[0]["zip_url"])
-                extracted = provider.extract(pdf_bytes, period_start, period_end)
+                extracted, usage = provider.extract(
+                    pdf_bytes, period_start, period_end,
+                    filename=name.rsplit("/", 1)[-1],
+                )
                 got = provider.to_facts(extracted, symbol, filing_date, period_end)
                 got_series = got.set_index("metric")["value"]
             except ProviderError as exc:
                 print(f"  {symbol:<14} {period_end} EXTRACTION FAILED: {exc}")
                 all_results.append({"symbol": symbol, "period_end": period_end,
-                                    "matched": 0, "compared": 0, "error": str(exc)[:70]})
+                                    "matched": 0, "compared": 0,
+                                    "cost_usd": 0.0, "error": str(exc)[:70]})
                 continue
 
             result = compare(truth, got_series)
             matched, compared = int(result.match.sum()), len(result)
+            cost = usage.get("cost_usd") or 0.0
             print(f"  {symbol:<14} {period_end}  {matched}/{compared} within "
-                  f"{TOLERANCE:.1%}   [{name}]")
+                  f"{TOLERANCE:.1%}  ${cost:.4f}  [{name.rsplit('/', 1)[-1]}]")
             for _, row in result[~result.match].iterrows():
                 print(f"      MISMATCH {row.metric:<16} xbrl={row.expected:>18,.0f} "
                       f"pdf={row.actual if pd.notna(row.actual) else float('nan'):>18,.0f} "
@@ -169,7 +178,8 @@ def main() -> int:
                 print(f"      notes: {extracted.extraction_notes[:120]}")
 
             all_results.append({"symbol": symbol, "period_end": period_end,
-                                "matched": matched, "compared": compared, "error": ""})
+                                "matched": matched, "compared": compared,
+                                "cost_usd": cost, "error": ""})
 
     if not all_results:
         print("\nNothing could be compared.", file=sys.stderr)
@@ -180,9 +190,18 @@ def main() -> int:
     total_compared = int(summary.compared.sum())
     rate = total_matched / total_compared if total_compared else 0.0
 
+    spend = float(summary.get("cost_usd", pd.Series(dtype=float)).sum())
+    statements = len(summary)
+    per_doc = spend / statements if statements else 0.0
+    # Full backfill: ~750 companies x 6 post-XBRL quarters.
+    projected = per_doc * 750 * 6
+
     print(f"\n{'=' * 62}")
+    print(f"model:    {provider.model}  (pdf engine: {settings_module.PDF_ENGINE})")
     print(f"accuracy: {total_matched}/{total_compared} metrics "
-          f"({rate:.1%}) across {len(summary)} statements")
+          f"({rate:.1%}) across {statements} statements")
+    print(f"cost:     ${spend:.4f} total, ${per_doc:.4f}/statement "
+          f"-> ~${projected:,.0f} for the full backfill (~4,500 statements)")
     print(f"threshold: {PASS_THRESHOLD:.0%}  ->  "
           f"{'PASS — safe to ingest' if rate >= PASS_THRESHOLD else 'FAIL — do not ingest'}")
 

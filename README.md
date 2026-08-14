@@ -38,6 +38,37 @@ Run `validate` after every edit to `config/themes.yaml`. A mistyped symbol
 silently shrinks a theme basket and biases its index, so the validator treats
 an unresolved ticker as a config bug rather than dropping it quietly.
 
+## LLM extraction
+
+Post-2024 quarterly financials exist only as PDFs, so they are extracted with a
+model routed through OpenRouter. Put the key in `.env` (gitignored):
+
+```
+OPENROUTER_API_KEY=sk-or-v1-...
+INVESTO_LLM_MODEL=anthropic/claude-sonnet-5
+INVESTO_PDF_ENGINE=native
+```
+
+The model is config, not code, because accuracy and cost trade off sharply —
+152 OpenRouter models accept PDFs and enforce JSON schemas, spanning roughly
+20x in price. Measure before choosing:
+
+```bash
+python scripts/validate_pdf_extraction.py --companies 5 --model anthropic/claude-sonnet-5
+```
+
+That extracts quarters we already hold XBRL for, compares every metric against
+the known-correct figure at 0.5% tolerance, prints real spend per statement and
+a projected backfill cost, and exits non-zero below 95%. Nothing extracted feeds
+a score until it passes.
+
+Two settings are deliberate. `INVESTO_PDF_ENGINE=native` overrides OpenRouter's
+`mistral-ocr` default, which bills $2/1,000 pages to OCR documents that are
+already digital text and flattens the table structure the figures live in. And
+`provider.require_parameters` makes a request fail rather than route to an
+endpoint that ignores the schema — an unvalidated blob that looks like an answer
+is worse than a clear error.
+
 ## Automation
 
 A Windows scheduled task, `AI-Investo Nightly`, runs `scripts/run_nightly.cmd`
@@ -93,7 +124,7 @@ figures look public ~45 days before they were, inflating every backtest.
 - [~] Stage 2 — fundamentals and quality gates
   - [x] XBRL ingest with true filing dates (through Dec-2024)
   - [x] Quality gates, tri-state, 21 tests
-  - [ ] PDF extraction for 2025+ quarters — built, needs `ANTHROPIC_API_KEY`
+  - [ ] PDF extraction for 2025+ quarters — built, needs `OPENROUTER_API_KEY`
         and an accuracy run before anything it produces is trusted
   - [ ] Promoter shareholding ingest (pledge gate)
 - [ ] Stage 3 — backtest and weight calibration

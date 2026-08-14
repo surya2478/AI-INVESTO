@@ -25,4 +25,8 @@ python-dotenv>=1.2
 fastapi>=0.141
 uvicorn>=0.52
 
+# LLM extraction is routed through OpenRouter, which is OpenAI-compatible, so
+# the OpenAI SDK is the client regardless of which model is selected.
+openai>=3.0
+
 pytest>=9.1

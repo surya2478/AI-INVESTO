@@ -45,6 +45,22 @@ class Settings:
     # History --------------------------------------------------------------
     HISTORY_START: str = "2012-01-01"        # pre-dates the 2015 backtest window
 
+    # LLM extraction -------------------------------------------------------
+    # Routed through OpenRouter, so the model is a config value rather than a
+    # code change. Accuracy per model is measured by
+    # scripts/validate_pdf_extraction.py before any model is trusted.
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    LLM_MODEL: str = field(
+        default_factory=lambda: os.getenv("INVESTO_LLM_MODEL", "anthropic/claude-sonnet-5")
+    )
+    # 'native' lets the model read the PDF directly -- best for the ruled tables
+    # in a results statement. OpenRouter DEFAULTS to mistral-ocr at $2/1,000
+    # pages, which is for scans; BSE statements are digital text, so paying for
+    # OCR would be waste. 'cloudflare-ai' is free but flattens table structure.
+    PDF_ENGINE: str = field(
+        default_factory=lambda: os.getenv("INVESTO_PDF_ENGINE", "native")
+    )
+
     # Universe filters -----------------------------------------------------
     # A multibagger has to start small; a name already at Rs 1L cr cannot 10x.
     MIN_MARKET_CAP_CR: float = 300.0

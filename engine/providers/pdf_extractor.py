@@ -1,4 +1,22 @@
-"""Extract quarterly financials from BSE result PDFs via the Claude API.
+"""Extract quarterly financials from BSE result PDFs via OpenRouter.
+
+Routed through OpenRouter rather than a single vendor, so the model is a config
+value (`INVESTO_LLM_MODEL`) instead of a code change. That matters here because
+extraction accuracy and cost trade off sharply -- 152 OpenRouter models support
+both PDF input and structured outputs, spanning roughly 20x in price -- and
+`scripts/validate_pdf_extraction.py` can measure any of them against the XBRL
+ground truth before one is trusted.
+
+Two OpenRouter specifics worth knowing:
+
+  * PDF engine defaults to `mistral-ocr` at $2/1,000 pages. BSE statements are
+    digital text, not scans, so the engine is pinned to `native` and the model
+    reads the document directly. Paying to OCR machine-generated text would be
+    waste and would flatten the table structure the figures live in.
+  * `provider.require_parameters` is set so a request is refused rather than
+    routed to an endpoint that ignores the JSON schema. An unvalidated blob
+    that looks like an answer is worse than a clear failure.
+
 
 WHY THIS EXISTS
 ---------------
@@ -31,6 +49,7 @@ import base64
 import datetime as dt
 import io
 import logging
+import os
 import re
 import zipfile
 from typing import Literal
@@ -133,10 +152,10 @@ class BSEPDFProvider:
 
     name = "bse_pdf"
 
-    def __init__(self, model: str = "claude-opus-5") -> None:
-        self.model = model
+    def __init__(self, model: str | None = None) -> None:
+        self.model = model or settings.LLM_MODEL
         self._session: cr.Session | None = None
-        self._client = None
+        self._openai = None
 
     # ------------------------------------------------------------- transport
     def _bse(self) -> cr.Session:
@@ -146,21 +165,23 @@ class BSEPDFProvider:
             self._session = session
         return self._session
 
-    def _anthropic(self):
-        """Create the Claude client lazily, with an actionable error if unset."""
-        if self._client is None:
+    def _client(self):
+        """OpenRouter client, created lazily with an actionable error if unset."""
+        if self._openai is None:
             try:
-                import anthropic
+                from openai import OpenAI
             except ImportError as exc:  # pragma: no cover
-                raise ProviderError("pip install anthropic") from exc
-            try:
-                self._client = anthropic.Anthropic()
-            except Exception as exc:  # noqa: BLE001
+                raise ProviderError("pip install openai") from exc
+
+            key = os.getenv("OPENROUTER_API_KEY")
+            if not key:
                 raise ProviderError(
-                    "No Anthropic credentials found. Set ANTHROPIC_API_KEY in "
-                    "C:\\AI-Investo\\.env, or run `ant auth login`."
-                ) from exc
-        return self._client
+                    "OPENROUTER_API_KEY is not set. Add it to C:\\AI-Investo\\.env "
+                    "(already gitignored) as OPENROUTER_API_KEY=sk-or-v1-..., "
+                    "or set it in the environment. Get a key at openrouter.ai/keys."
+                )
+            self._openai = OpenAI(base_url=settings.OPENROUTER_BASE_URL, api_key=key)
+        return self._openai
 
     # ------------------------------------------------------- bundle discovery
     def fetch_result_bundles(self, scripcode: str) -> pd.DataFrame:
@@ -257,13 +278,20 @@ class BSEPDFProvider:
         period_start: dt.date,
         period_end: dt.date,
         basis: str = "Consolidated",
-    ) -> QuarterlyFinancials:
-        """Read one period's figures out of a results PDF."""
+        filename: str = "results.pdf",
+    ) -> tuple[QuarterlyFinancials, dict]:
+        """Read one period's figures out of a results PDF.
+
+        Returns (financials, usage) where usage carries OpenRouter's reported
+        cost for the call, so a bulk run can report real spend rather than an
+        estimate.
+        """
         if len(pdf_bytes) > 30 * 1024 * 1024:
             raise ProviderError(f"pdf too large for one request: {len(pdf_bytes):,} bytes")
 
-        client = self._anthropic()
-        encoded = base64.standard_b64encode(pdf_bytes).decode("ascii")
+        client = self._client()
+        data_url = ("data:application/pdf;base64,"
+                    + base64.standard_b64encode(pdf_bytes).decode("ascii"))
 
         instruction = (
             f"Extract the {basis.lower()} figures for the quarter that starts "
@@ -274,36 +302,60 @@ class BSEPDFProvider:
             f"used by returning its period in period_start and period_end."
         )
 
-        response = client.messages.parse(
-            model=self.model,
-            max_tokens=8000,
-            system=SYSTEM_PROMPT,
-            output_format=QuarterlyFinancials,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": encoded,
-                        },
-                    },
-                    {"type": "text", "text": instruction},
+        try:
+            response = client.chat.completions.parse(
+                model=self.model,
+                max_tokens=8000,
+                temperature=0,
+                response_format=QuarterlyFinancials,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": [
+                        {"type": "file",
+                         "file": {"filename": filename, "file_data": data_url}},
+                        {"type": "text", "text": instruction},
+                    ]},
                 ],
-            }],
-        )
-
-        if response.stop_reason == "refusal":
-            raise ProviderError(
-                "Claude declined this document "
-                f"({getattr(response.stop_details, 'category', 'unknown')})"
+                extra_body={
+                    # 'native' avoids OpenRouter's mistral-ocr default, which
+                    # bills $2/1,000 pages to OCR documents that are already text.
+                    "plugins": [{"id": "file-parser",
+                                 "pdf": {"engine": settings.PDF_ENGINE}}],
+                    # Refuse to silently route to an endpoint that ignores the
+                    # schema; an unvalidated blob is worse than a clear failure.
+                    "provider": {"require_parameters": True},
+                    "usage": {"include": True},
+                },
+                extra_headers={
+                    "HTTP-Referer": "https://github.com/local/ai-investo",
+                    "X-Title": "AI-Investo",
+                },
             )
-        if response.parsed_output is None:
-            raise ProviderError(f"no structured output (stop_reason={response.stop_reason})")
+        except Exception as exc:  # noqa: BLE001 - surfaced with context
+            raise ProviderError(f"OpenRouter call failed: {exc}") from exc
 
-        return response.parsed_output
+        choice = response.choices[0] if response.choices else None
+        if choice is None:
+            raise ProviderError("OpenRouter returned no choices")
+        if choice.finish_reason == "content_filter":
+            raise ProviderError("provider filtered this document")
+
+        parsed = getattr(choice.message, "parsed", None)
+        if parsed is None:
+            raise ProviderError(
+                f"no structured output (finish_reason={choice.finish_reason}); "
+                f"content began: {(choice.message.content or '')[:120]!r}"
+            )
+
+        raw_usage = response.usage
+        usage = {
+            "model": response.model,
+            "prompt_tokens": getattr(raw_usage, "prompt_tokens", None),
+            "completion_tokens": getattr(raw_usage, "completion_tokens", None),
+            # OpenRouter adds `cost` in USD when usage.include is set.
+            "cost_usd": getattr(raw_usage, "cost", None),
+        }
+        return parsed, usage
 
     # ------------------------------------------------------------ conversion
     @staticmethod
