@@ -225,16 +225,22 @@ CREATE TABLE IF NOT EXISTS trend_confluence (
 );
 
 -- ------------------------------------------------------------------- scoring
+-- `status` is the authoritative field, not `passed`. A boolean cannot express
+-- the distinction the gates exist to make: UNKNOWN (could not be evaluated) is
+-- not FAIL and is not PASS. Storing only the boolean collapsed every
+-- unevaluated gate into a rejection.
 CREATE TABLE IF NOT EXISTS gate_results (
     security_id     BIGINT  NOT NULL,
     as_of_date      DATE    NOT NULL,
     gate_name       VARCHAR NOT NULL,
-    passed          BOOLEAN,
+    status          VARCHAR,                      -- PASS | FAIL | UNKNOWN
+    passed          BOOLEAN,                      -- convenience: status = 'PASS'
     observed_value  DOUBLE,
     threshold       DOUBLE,
     detail          VARCHAR,                      -- shown verbatim in the app
     PRIMARY KEY (security_id, as_of_date, gate_name)
 );
+ALTER TABLE gate_results ADD COLUMN IF NOT EXISTS status VARCHAR;
 
 CREATE TABLE IF NOT EXISTS scores (
     security_id   BIGINT NOT NULL,

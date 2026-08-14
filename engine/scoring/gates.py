@@ -273,7 +273,7 @@ def run_gates(con, as_of: dt.date | None = None, limit: int = 0) -> pd.DataFrame
         return frame
 
     con.register("staged_gates", frame[[
-        "security_id", "as_of_date", "gate_name", "passed",
+        "security_id", "as_of_date", "gate_name", "status", "passed",
         "observed_value", "threshold", "detail",
     ]])
     con.execute("""
@@ -283,8 +283,9 @@ def run_gates(con, as_of: dt.date | None = None, limit: int = 0) -> pd.DataFrame
     """)
     con.execute("""
         INSERT INTO gate_results
-            (security_id, as_of_date, gate_name, passed, observed_value, threshold, detail)
-        SELECT security_id, as_of_date, gate_name, passed,
+            (security_id, as_of_date, gate_name, status, passed,
+             observed_value, threshold, detail)
+        SELECT security_id, as_of_date, gate_name, status, passed,
                observed_value, threshold, detail
           FROM staged_gates
     """)

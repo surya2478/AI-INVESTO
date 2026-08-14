@@ -210,6 +210,38 @@
   .confbar { height: 2px; background: var(--p-line); border-radius: 1px; margin-top: 4px; }
   .confbar i { display: block; height: 100%; background: var(--p-ink); border-radius: 1px; }
 
+  /* screening */
+  .verdicts { display: flex; gap: 6px; margin: 0 20px 10px; }
+  .verdict {
+    flex: 1; padding: 8px 6px; border-radius: 4px; text-align: center;
+    background: var(--p-surface); border: 1px solid var(--p-line);
+  }
+  .verdict b {
+    display: block; font-family: var(--mono); font-size: 16px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .verdict span {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--p-muted);
+  }
+  .v-rejected b { color: var(--p-neg); }
+  .v-flagged  b { color: var(--p-warn); }
+  .v-unvetted b { color: var(--p-muted); }
+  .v-cleared  b { color: var(--p-pos); }
+
+  .gaterow {
+    display: grid; grid-template-columns: 1fr 96px;
+    gap: 10px; align-items: center; padding: 6px 0;
+    border-bottom: 1px solid var(--p-line);
+  }
+  .gaterow:last-child { border-bottom: 0; }
+  .gatename { font-family: var(--mono); font-size: 10.5px; }
+  .stack { display: flex; height: 5px; border-radius: 2px; overflow: hidden; }
+  .stack i { display: block; height: 100%; }
+  .s-pass { background: var(--p-pos); }
+  .s-fail { background: var(--p-neg); }
+  .s-unk  { background: var(--p-line); }
+
   /* gems pending */
   .pending {
     margin: 0 20px; padding: 14px; border-radius: 5px;
@@ -343,12 +375,16 @@
           <div class="band-label"><span>Theme board</span><span>14 themes</span></div>
           <div class="board" id="board"></div>
 
+          <div class="band-label"><span>Screening</span><span id="screen-count"></span></div>
+          <div id="screening"></div>
+
           <div class="band-label"><span>Gems</span></div>
           <div class="pending">
             <div class="tag">No scores yet</div>
             <p>
-              G.E.M. scoring needs reported financials with filing dates. Those
-              arrive from NSE/BSE XBRL at Stage&nbsp;2. Ranking stocks on price
+              Screening runs; ranking does not. The G.E.M. score needs quarterly
+              financials for the whole universe, and structured filings stop at
+              Dec&nbsp;2024 — both exchanges moved to PDF-only. Ranking on price
               action alone would just be a momentum screen wearing a different name.
             </p>
           </div>
@@ -464,11 +500,17 @@
       <div class="note">
         <span class="marker">5</span>
         <div>
-          <h3>The empty Gems tab is the point</h3>
+          <h3>Nothing is cleared, and that is correct</h3>
           <p>
-            It would be easy to rank these 208 names on price momentum today and call
-            it a score. That would be a momentum screen with a better logo. The tab
-            stays empty until fundamentals with real filing dates land at Stage&nbsp;2.
+            All 761 companies were screened. None came back <em>cleared</em>, because
+            cash conversion is a critical gate and no company has the data to answer
+            it — quarterly results in India carry no cash-flow statement. Those names
+            are <em>unvetted</em>, not clean.
+          </p>
+          <p>
+            The distinction is the whole point. Absence of evidence is not evidence of
+            quality, and a screen that quietly counts "not checked" as "passed" is how
+            people end up holding the thing the gates existed to catch.
           </p>
         </div>
       </div>
@@ -492,8 +534,9 @@
           <tr><td>Sparklines</td><td class="yes">computed</td><td>18 months, both legs rebased to 100</td></tr>
           <tr><td>Stage + confluence</td><td class="yes">computed</td><td>daily/weekly/monthly momentum</td></tr>
           <tr><td>Divergence + percentile</td><td class="yes">computed</td><td>13-week momentum gap vs own history</td></tr>
-          <tr><td>G.E.M. scores</td><td class="no">stage 2</td><td>needs XBRL fundamentals with filing dates</td></tr>
-          <tr><td>Quality gates</td><td class="no">stage 2</td><td>needs pledge, cash-flow, ownership data</td></tr>
+          <tr><td>Quality gates</td><td class="yes">computed</td><td>761 companies screened; 37 rejected on live NSE surveillance</td></tr>
+          <tr><td>4 of 12 gates</td><td class="no">no data</td><td>cash flow, receivables, related party, pledge — report UNKNOWN</td></tr>
+          <tr><td>G.E.M. scores</td><td class="no">blocked</td><td>needs quarterly financials past Dec-2024; both exchanges are PDF-only</td></tr>
           <tr><td>Portfolio + journal</td><td class="no">stage 5</td><td>no holdings entered yet</td></tr>
           <tr><td>Thresholds behind stages</td><td class="no">stage 3</td><td>reasoned defaults, not yet calibrated</td></tr>
         </tbody>
@@ -587,6 +630,59 @@ function spark(indiaArr, globalArr, w = 74, h = 24) {
     <polyline points="${pts(i)}" fill="none" stroke="var(--p-india)" stroke-width="1.5"/>
     <circle cx="${w}" cy="${(h - ((i[i.length - 1] - lo) / span) * h).toFixed(1)}" r="1.8" fill="var(--p-india)"/>
   </svg>`;
+}
+
+/* ------------------------------------------------------------- screening */
+const G = DATA.gates || {};
+if (G.available) {
+  const v = G.verdicts || {};
+  document.getElementById("screen-count").textContent = `${G.companies} companies`;
+
+  const tiles = [
+    ["REJECTED", "rejected", "v-rejected"],
+    ["FLAGGED", "flagged", "v-flagged"],
+    ["UNVETTED", "unvetted", "v-unvetted"],
+    ["CLEARED", "cleared", "v-cleared"],
+  ].map(([key, label, cls]) =>
+    `<div class="verdict ${cls}"><b>${v[key] || 0}</b><span>${label}</span></div>`
+  ).join("");
+
+  // Only gates that actually produced a verdict; the rest have nothing to show.
+  const rows = (G.per_gate || [])
+    .filter(g => g.passed + g.failed > 0)
+    .map(g => {
+      const total = g.total || 1;
+      const pct = n => (n / total * 100).toFixed(1);
+      return `
+        <div class="gaterow">
+          <div>
+            <div class="gatename">${g.gate_name.replace(/_/g, " ")}</div>
+            <div class="stack" style="margin-top:5px">
+              <i class="s-pass" style="width:${pct(g.passed)}%"></i>
+              <i class="s-fail" style="width:${pct(g.failed)}%"></i>
+              <i class="s-unk"  style="width:${pct(g.unknown)}%"></i>
+            </div>
+          </div>
+          <div class="conf" style="font-size:10px">
+            <span class="pos">${g.passed}</span> /
+            <span class="neg">${g.failed}</span> /
+            <span style="color:var(--p-muted)">${g.unknown}</span>
+          </div>
+        </div>`;
+    }).join("");
+
+  document.getElementById("screening").innerHTML = `
+    <div class="verdicts">${tiles}</div>
+    <div class="board">${rows}</div>
+    <div class="disclaimer" style="margin-top:10px">
+      pass / fail / unknown. Unknown is not a pass — a company that cannot be
+      checked is not a company that passed, so none are shown as cleared while a
+      critical gate has no data.
+    </div>`;
+} else {
+  document.getElementById("screening").innerHTML =
+    `<div class="pending"><div class="tag">Not yet run</div>
+     <p>Run <code>investo gates</code> to screen the universe.</p></div>`;
 }
 
 /* --------------------------------------------------------------- the board */
