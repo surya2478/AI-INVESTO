@@ -196,8 +196,14 @@ Further rules:
 - revenue is "Revenue from operations" ONLY. Do not add other income to it, and
   do not report total income in its place.
 - EPS is for the SAME three-month column as everything else, never the
-  year-to-date or full-year EPS. Where basic EPS is split between continuing and
-  discontinued operations, report the total.
+  year-to-date or full-year EPS.
+- CONTINUING VS TOTAL OPERATIONS. Where a company reports discontinued
+  operations, the statement shows profit for continuing operations AND a total
+  for the period. Always report the TOTAL — pat and EPS must cover continuing
+  plus discontinued. Reading the continuing-operations line alone is the single
+  most common error on these statements, and it produces a figure that is
+  internally consistent and still wrong. If the statement separates them, say so
+  in extraction_notes.
 - If the statement shows only current and deferred tax, report those two and
   leave tax_expense null; do not add them up yourself.
 - other_expenses is the single line labelled "Other expenses". If the statement
@@ -318,6 +324,44 @@ def consistency_check(values: dict, tolerance: float = 0.01) -> list[str]:
         close(values.get("pat"), pbt - tax, "pat != pbt - tax")
 
     return problems
+
+
+def adjacent_column_check(
+    values: dict, prior_values: dict, threshold: float = 0.6
+) -> str | None:
+    """Detect an extraction that actually read the comparative column.
+
+    The worst failure on these statements is not a garbled number, it is a
+    perfectly clean read of the wrong column. TD Power's Dec-2024 extraction
+    returned the September quarter's figures exactly: internally consistent, so
+    `consistency_check` passed it, and the model still echoed back the correct
+    period, so the period guard passed too.
+
+    The one thing that does give it away is that the numbers equal the PREVIOUS
+    quarter's. That is checkable against data we already store, needs no
+    reference source and no stronger model.
+
+    Returns a description when the extraction looks like a duplicate of the
+    prior quarter, else None.
+    """
+    if not prior_values:
+        return None
+
+    comparable = matches = 0
+    for metric, value in values.items():
+        prior = prior_values.get(metric)
+        if value is None or prior is None or not isinstance(value, (int, float)):
+            continue
+        if abs(prior) < 1.0:                      # zeros match trivially
+            continue
+        comparable += 1
+        if abs(value - prior) / abs(prior) <= 0.005:
+            matches += 1
+
+    if comparable >= 5 and matches / comparable >= threshold:
+        return (f"{matches}/{comparable} metrics identical to the prior quarter — "
+                "likely read the comparative column")
+    return None
 
 
 def _parse_announcement_date(value) -> dt.date | None:

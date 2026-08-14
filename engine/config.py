@@ -50,8 +50,13 @@ class Settings:
     # code change. Accuracy per model is measured by
     # scripts/validate_pdf_extraction.py before any model is trusted.
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # Measured on 5 statements against XBRL ground truth (Aug 2026):
+    #   gemini-2.5-flash-lite  92.7%  ~$2 for the full backfill
+    #   claude-sonnet-5        96.4%  ~$357
+    # The 3.7-point gap is two metrics; the cost gap is ~180x. Errors that do
+    # slip through are caught by consistency_check() rather than by spending.
     LLM_MODEL: str = field(
-        default_factory=lambda: os.getenv("INVESTO_LLM_MODEL", "anthropic/claude-sonnet-5")
+        default_factory=lambda: os.getenv("INVESTO_LLM_MODEL", "google/gemini-2.5-flash-lite")
     )
     # 'native' lets the model read the PDF directly -- best for the ruled tables
     # in a results statement. OpenRouter DEFAULTS to mistral-ocr at $2/1,000

@@ -49,9 +49,37 @@ INVESTO_LLM_MODEL=anthropic/claude-sonnet-5
 INVESTO_PDF_ENGINE=native
 ```
 
-The model is config, not code, because accuracy and cost trade off sharply —
-152 OpenRouter models accept PDFs and enforce JSON schemas, spanning roughly
-20x in price. Measure before choosing:
+Measured on 28 statements against XBRL ground truth (Aug 2026):
+
+| engine | model | accuracy | backfill cost |
+|---|---|---|---|
+| native | gemini-2.5-flash-lite | 83.8% | ~$2 |
+| native | claude-sonnet-5 | 96.4%* | ~$357 |
+| cloudflare-ai | either | 54–59% | ~$1–61 |
+
+\* Sonnet measured on 5 statements only; the same 5-statement sample flattered
+Flash Lite at 92.7%, so treat it as optimistic.
+
+`cloudflare-ai` is free and unusable here — it converts PDFs to markdown and
+drops the results tables outright, so accuracy collapses for every model. A
+results statement *is* layout; the numbers only mean anything because of which
+row and column they sit in. `native` is pinned for that reason.
+
+Three guards run on every extraction, and together they flagged 12 of the 14
+imperfect statements with no reference data — which is what matters for the
+~750 companies where no XBRL exists:
+
+1. **period echo** — the model must return the period it read; a mismatch or a
+   span that is not ~90 days is rejected outright.
+2. **arithmetic** (`consistency_check`) — income = revenue + other income,
+   pbt = income − expenses, pat = pbt − tax.
+3. **adjacent column** (`adjacent_column_check`) — the worst failure is a clean
+   read of the *wrong* column. TD Power's Dec-2024 extraction returned the
+   September quarter's figures exactly: internally consistent, correct period
+   echoed, every number wrong. Comparing against the prior quarter's stored
+   values is the only thing that catches it.
+
+Measure before choosing:
 
 ```bash
 python scripts/validate_pdf_extraction.py --companies 5 --model anthropic/claude-sonnet-5

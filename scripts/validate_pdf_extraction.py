@@ -26,6 +26,7 @@ from engine.providers.pdf_extractor import (
     BSE_API,
     BSEPDFProvider,
     HEADERS,
+    adjacent_column_check,
     consistency_check,
 )
 from engine.storage import db
@@ -188,6 +189,20 @@ def main() -> int:
             # That is what matters for the thousands of companies where no
             # reference exists.
             problems = consistency_check(got_series.to_dict())
+
+            # Compare against the prior quarter's TRUE values: an extraction
+            # that reproduces them has read the comparative column.
+            prior_end = sorted(
+                p for p in group["period_end"].unique()
+                if pd.Timestamp(p).date() < period_end
+            )
+            if prior_end:
+                prior = (group[group.period_end == prior_end[-1]]
+                         .set_index("metric")["value"].to_dict())
+                duplicate = adjacent_column_check(got_series.to_dict(), prior)
+                if duplicate:
+                    problems.append(duplicate)
+
             flag = "self-check FAILED" if problems else "self-check ok"
             print(f"  {symbol:<14} {period_end}  {matched}/{compared} within "
                   f"{TOLERANCE:.1%}  ${cost:.4f}  {flag}  [{name[:30]}]")
@@ -228,6 +243,14 @@ def main() -> int:
           f"-> ~${projected:,.0f} for the full backfill (~4,500 statements)")
     print(f"threshold: {PASS_THRESHOLD:.0%}  ->  "
           f"{'PASS — safe to ingest' if rate >= PASS_THRESHOLD else 'FAIL — do not ingest'}")
+
+    # How much of the damage the guards catch on their own is what matters for
+    # the ~750 companies with no XBRL to check against.
+    if "self_check_failed" in summary.columns:
+        bad = summary[summary.matched < summary.compared]
+        caught = int(bad["self_check_failed"].sum()) if not bad.empty else 0
+        print(f"guards:   flagged {caught}/{len(bad)} of the imperfect statements "
+              f"without any reference data")
 
     settings_dir = __import__("engine.config", fromlist=["settings"]).settings.REPORT_DIR
     settings_dir.mkdir(parents=True, exist_ok=True)
