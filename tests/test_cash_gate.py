@@ -134,3 +134,17 @@ def test_pledge_uses_promoter_denominator_not_equity():
 
 def test_no_disclosure_is_unknown():
     assert gates.gate_promoter_pledge(ctx()).status == UNKNOWN
+
+
+def test_impossible_pledge_ratio_is_unknown_not_fail():
+    """The ITC case.
+
+    ITC and L&T have no promoter, so promoter holding is near zero and a
+    promoter-relative ratio explodes — ITC came back as 7,905% pledged. A stake
+    cannot be more than 100% pledged, so this is a data artefact and must not
+    become a rejection.
+    """
+    assert gates.gate_promoter_pledge(ctx(ownership=ownership(7905.1, 0.0))).status == UNKNOWN
+    assert gates.gate_promoter_pledge(ctx(ownership=ownership(190.2, 0.9))).status == UNKNOWN
+    # A genuine extreme reading still fails.
+    assert gates.gate_promoter_pledge(ctx(ownership=ownership(63.0, 11.7))).status == FAIL

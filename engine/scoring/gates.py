@@ -265,6 +265,12 @@ def gate_promoter_pledge(ctx: GateContext) -> GateResult:
         return GateResult("promoter_pledge", UNKNOWN, detail="Disclosure carries no pledge figure")
 
     pledge = float(pledge)
+    # Defence in depth: the provider already suppresses these, but a value
+    # outside 0-100 is arithmetic nonsense and must never become a verdict.
+    if not 0.0 <= pledge <= 100.0:
+        return GateResult("promoter_pledge", UNKNOWN,
+                          detail=f"Implausible pledge figure ({pledge:.0f}%) — not evaluated")
+
     promoter = latest.get("promoter_pct")
     holding = f", promoters hold {float(promoter):.1f}%" if pd.notna(promoter) else ""
 

@@ -297,16 +297,32 @@ class NSEProvider:
 
         pledged = number("numSharesPledged")
         promoter_shares = number("totPromoterHolding")
-        pledge_of_promoter = (
-            (pledged / promoter_shares * 100.0)
-            if pledged is not None and promoter_shares else None
-        )
+        promoter_pct = number("percPromoterHolding")
+        issued = number("totIssuedShares")
+
+        # A promoter-relative ratio is meaningless when there is barely a
+        # promoter. ITC and L&T are professionally managed with promoter
+        # holdings near zero, and dividing by that denominator produced
+        # "7,905% pledged" for ITC and "190%" for L&T. Below a 1% promoter
+        # holding the measure is not defined, and any result above 100% is a
+        # data error rather than an extreme reading -- both return None so the
+        # gate reports UNKNOWN instead of a fabricated failure.
+        pledge_of_promoter = None
+        if (pledged is not None and promoter_shares
+                and (promoter_pct is None or promoter_pct >= 1.0)):
+            ratio = pledged / promoter_shares * 100.0
+            if 0.0 <= ratio <= 100.0:
+                pledge_of_promoter = ratio
+            else:
+                log.debug("%s: implausible pledge ratio %.1f%% (pledged=%s of %s)",
+                          symbol, ratio, pledged, promoter_shares)
 
         return {
             "symbol": symbol,
             "quarter_end": _parse_date(record.get("shp")),
             "filing_date": _parse_date(record.get("broadcastDt")),
-            "promoter_pct": number("percPromoterHolding"),
+            "promoter_pct": promoter_pct,
+            "issued_shares": issued,
             # The gate's measure: pledged as a share of what promoters hold.
             "promoter_pledge_pct": pledge_of_promoter,
             # As NSE reports it: pledged as a share of total issued equity.
