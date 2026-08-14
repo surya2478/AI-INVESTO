@@ -64,17 +64,25 @@ def candidate_companies(con, batch_size: int, restart: bool = False) -> pd.DataF
 
     theme_tickers = set(load_theme_graph().india_universe())
 
-    frame = con.execute("""
+    # Theme members are included whether or not they are in the index. 14 of
+    # them sit below the NIFTY TOTAL MARKET cutoff, and drawing only from the
+    # index would silently skip companies deliberately chosen for the thesis --
+    # which is also where early-stage names are most likely to be.
+    placeholders = ",".join("?" * len(theme_tickers)) or "''"
+    frame = con.execute(f"""
         SELECT DISTINCT s.security_id, s.ticker, s.exchange_symbol,
                coalesce(s.industry, '') AS industry
-          FROM index_membership im
-          JOIN securities s ON s.security_id = im.security_id
-         WHERE im.index_name = 'NIFTY TOTAL MARKET'
-           AND im.to_date IS NULL
-           AND coalesce(s.industry, '') NOT IN
-               ('Financial Services', 'Insurance')
+          FROM securities s
+          LEFT JOIN index_membership im
+                 ON im.security_id = s.security_id
+                AND im.index_name = 'NIFTY TOTAL MARKET'
+                AND im.to_date IS NULL
+         WHERE s.country = 'IN'
+           AND (im.security_id IS NOT NULL OR s.ticker IN ({placeholders}))
+           AND (coalesce(s.industry, '') NOT IN ('Financial Services', 'Insurance')
+                OR s.ticker IN ({placeholders}))
          ORDER BY s.ticker
-    """).df()
+    """, list(theme_tickers) * 2).df()
 
     frame = frame[~frame["security_id"].isin(processed)].copy()
     frame["priority"] = frame["ticker"].map(lambda t: 0 if t in theme_tickers else 1)
