@@ -165,6 +165,13 @@ def main() -> int:
                     pdf_bytes, period_start, period_end, filename=name,
                 )
                 got = provider.to_facts(extracted, symbol, filing_date, period_end)
+                # An extraction can validate structurally and still carry no
+                # figures — the parsed text may not have held the table at all.
+                if got.empty:
+                    raise ProviderError(
+                        "extraction returned no figures "
+                        f"({(extracted.extraction_notes or 'no notes')[:90]})"
+                    )
                 got_series = got.set_index("metric")["value"]
             except ProviderError as exc:
                 print(f"  {symbol:<14} {period_end} EXTRACTION FAILED: {exc}")
