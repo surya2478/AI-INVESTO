@@ -105,6 +105,47 @@
     border:1px solid var(--warn);color:var(--warn);
     font-family:var(--mono);font-size:10px}
   section[hidden]{display:none}
+
+  /* Company sheet — the analysis behind a name. Full screen rather than a modal
+     because the gate reasons are the point and they need room to be read. */
+  #sheet{position:fixed;inset:0;background:var(--ground);z-index:50;
+    overflow-y:auto;padding-bottom:40px;display:none}
+  #sheet.open{display:block}
+  .sheet-top{position:sticky;top:0;background:var(--ground);
+    padding:calc(12px + env(safe-area-inset-top)) 20px 10px;
+    border-bottom:1px solid var(--line);z-index:2}
+  .back{background:none;border:0;color:var(--india);font-family:var(--mono);
+    font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:0;
+    display:flex;align-items:center;gap:6px}
+  .sheet-top h2{margin:8px 0 2px;font-size:23px;letter-spacing:-.02em;font-weight:650}
+  .sheet-top .meta{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .verdict-badge{display:inline-block;margin-top:8px;padding:3px 8px;
+    border-radius:3px;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+    text-transform:uppercase;border:1px solid currentColor}
+  .vb-CLEARED{color:var(--pos)}.vb-FLAGGED{color:var(--warn)}
+  .vb-REJECTED{color:var(--neg)}.vb-UNVETTED{color:var(--muted)}
+  .pillar{display:grid;grid-template-columns:64px 1fr 30px;gap:9px;
+    align-items:center;padding:5px 0}
+  .pillar .pl{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .pillar .bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden}
+  .pillar .bar i{display:block;height:100%;background:var(--india);border-radius:3px}
+  .pillar .val{font-family:var(--mono);font-size:10.5px;text-align:right;
+    font-variant-numeric:tabular-nums}
+  .gate{padding:9px 0;border-bottom:1px solid var(--line)}
+  .gate:last-child{border-bottom:0}
+  .gate-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .gate-n{font-family:var(--mono);font-size:11px}
+  .gate-s{font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+    text-transform:uppercase}
+  .gs-PASS{color:var(--pos)}.gs-FAIL{color:var(--neg)}.gs-UNKNOWN{color:var(--muted)}
+  .gate-d{font-size:11.5px;color:#A9BEC3;margin-top:4px;line-height:1.45}
+  .fin{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10.5px;
+    font-variant-numeric:tabular-nums}
+  .fin th{text-align:right;color:var(--muted);font-weight:400;padding:4px 0;
+    font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
+  .fin th:first-child,.fin td:first-child{text-align:left}
+  .fin td{text-align:right;padding:5px 0;border-top:1px solid var(--line)}
+  .tap{cursor:pointer}
 </style>
 </head>
 <body>
@@ -167,6 +208,16 @@
     gates lack data and report unknown, which is never treated as a pass.</p></div>
 </section>
 
+<div id="sheet">
+  <div class="sheet-top">
+    <button class="back" id="sheet-back">‹ back</button>
+    <h2 id="sheet-title">—</h2>
+    <div class="meta" id="sheet-meta"></div>
+    <div id="sheet-verdict"></div>
+  </div>
+  <div id="sheet-body"></div>
+</div>
+
 <nav>
   <button class="on" data-view="today">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Today</button>
@@ -200,6 +251,120 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   if (v === "folio") loadFolio();
 });
 
+/* ------------------------------------------------------------ company sheet */
+const sheet = document.getElementById("sheet");
+document.getElementById("sheet-back").onclick = () => sheet.classList.remove("open");
+
+const PILLAR_LABELS = { t_score:"theme", g_score:"growth", q_score:"quality",
+  d_score:"discovery", v_score:"value", m_score:"momentum" };
+const METRIC_LABELS = { revenue:"Revenue", pat:"Profit", ebitda:"EBITDA",
+  cfo:"Cash flow", capex:"Capex", net_worth:"Net worth", total_debt:"Debt" };
+
+function openCompany(ticker) {
+  sheet.classList.add("open");
+  sheet.scrollTop = 0;
+  document.getElementById("sheet-title").textContent = ticker.replace(".NS", "");
+  document.getElementById("sheet-meta").textContent = "loading…";
+  document.getElementById("sheet-verdict").innerHTML = "";
+  document.getElementById("sheet-body").innerHTML = "";
+
+  fetch(`/api/company/${encodeURIComponent(ticker)}`).then(r => r.json()).then(d => {
+    const p = d.profile || {};
+    document.getElementById("sheet-title").textContent =
+      (p.name || ticker).slice(0, 40);
+    document.getElementById("sheet-meta").textContent =
+      [p.ticker, p.industry || null, p.mcap_cr ? "₹" + cr(p.mcap_cr) + " cr" : null]
+        .filter(Boolean).join(" · ");
+
+    const gates = d.gates || [];
+    const fails = gates.filter(g => g.status === "FAIL");
+    const critical = fails.filter(g => ["surveillance","cash_conversion",
+      "serial_dilution","sustained_losses"].includes(g.gate_name));
+    const unknownCrit = gates.filter(g => g.status === "UNKNOWN" &&
+      ["surveillance","cash_conversion","serial_dilution","sustained_losses"].includes(g.gate_name));
+    const verdict = critical.length ? "REJECTED" : fails.length ? "FLAGGED"
+      : unknownCrit.length ? "UNVETTED" : "CLEARED";
+    document.getElementById("sheet-verdict").innerHTML =
+      `<span class="verdict-badge vb-${verdict}">${verdict}</span>`;
+
+    // Pillars, labelled as bands rather than a rank — the backtest said the
+    // composite does not order companies.
+    const pil = d.pillars;
+    const pillarHtml = pil ? `
+      <div class="card"><div class="tag">Score pillars — ${pil.band || "unbanded"} third</div>
+        <div style="margin-top:8px">${Object.keys(PILLAR_LABELS).map(k => {
+          const v = pil[k];
+          return `<div class="pillar"><div class="pl">${PILLAR_LABELS[k]}</div>
+            <div class="bar"><i style="width:${v == null ? 0 : Math.max(0, Math.min(100, v))}%"></i></div>
+            <div class="val">${v == null ? "—" : v.toFixed(0)}</div></div>`;
+        }).join("")}</div>
+        <p style="margin-top:8px;font-size:11px;color:var(--muted)">Percentile within
+        the universe. Used to group, not to rank.</p>
+      </div>` : "";
+
+    // Gates first among the detail: the reason a name was rejected is the most
+    // useful thing on this screen.
+    const gateHtml = `
+      <div class="card"><div class="tag">Quality gates</div>
+        <div style="margin-top:6px">${gates.map(g => `
+          <div class="gate"><div class="gate-h">
+            <span class="gate-n">${g.gate_name.replace(/_/g, " ")}</span>
+            <span class="gate-s gs-${g.status}">${g.status}</span></div>
+            ${g.detail ? `<div class="gate-d">${g.detail}</div>` : ""}</div>`).join("")}
+        </div></div>`;
+
+    // Financials: annual series, most recent first, in crore.
+    const fin = (d.financials || []).filter(f => f.period_type === "A");
+    const periods = [...new Set(fin.map(f => f.period_end))].sort().slice(-4).reverse();
+    const metrics = ["revenue", "pat", "cfo", "ebitda"];
+    const finHtml = periods.length ? `
+      <div class="card"><div class="tag">Annual, ₹ crore</div>
+        <table class="fin" style="margin-top:8px">
+          <tr><th></th>${periods.map(p => `<th>${String(p).slice(0,4)}</th>`).join("")}</tr>
+          ${metrics.map(m => {
+            const cells = periods.map(pe => {
+              const hit = fin.find(f => f.metric === m && f.period_end === pe);
+              return `<td>${hit ? (hit.value / 1e7).toFixed(0) : "—"}</td>`;
+            }).join("");
+            return `<tr><td>${METRIC_LABELS[m] || m}</td>${cells}</tr>`;
+          }).join("")}
+        </table>
+        <p style="margin-top:8px;font-size:11px;color:var(--muted)">Source Yahoo,
+        no filing dates — fine for screening today, never used for backtesting.</p>
+      </div>` : "";
+
+    // Two-year price line.
+    const px = d.prices || [];
+    let priceHtml = "";
+    if (px.length > 20) {
+      const vals = px.map(r => r.close);
+      const lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+      const pts = vals.map((v, i) =>
+        `${(i / (vals.length - 1) * 300).toFixed(1)},${(60 - (v - lo) / span * 60).toFixed(1)}`).join(" ");
+      const chg = (vals[vals.length - 1] / vals[0] - 1) * 100;
+      priceHtml = `
+        <div class="card"><div class="tag">Price, 2 years</div>
+          <svg viewBox="0 0 300 64" width="100%" height="70" style="margin-top:6px">
+            <polyline points="${pts}" fill="none" stroke="var(--india)" stroke-width="1.6"/>
+          </svg>
+          <div class="bs">${fmt(vals[vals.length-1], 2)} · ${signed(chg, 0)}% over the window</div>
+        </div>`;
+    }
+
+    document.getElementById("sheet-body").innerHTML =
+      pillarHtml + gateHtml + finHtml + priceHtml +
+      `<div class="note">${d.disclaimer || ""}</div>`;
+  }).catch(() => {
+    document.getElementById("sheet-meta").textContent = "could not load this company";
+  });
+}
+
+// Any element carrying data-ticker opens the sheet.
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-ticker]");
+  if (el) openCompany(el.dataset.ticker);
+});
+
 let folioLoaded = false;
 function loadFolio() {
   if (folioLoaded) return;
@@ -218,8 +383,8 @@ function loadFolio() {
     const x = d.xray || {};
     document.getElementById("folio").innerHTML =
       pos.map(p => `
-        <div class="card" style="border-left:2px solid ${tone[p.health] || "var(--line)"}">
-          <div class="bh"><b>${p.ticker.replace(".NS","")}</b>
+        <div class="card tap" data-ticker="${p.ticker}" style="border-left:2px solid ${tone[p.health] || "var(--line)"}">
+          <div class="bh"><b>${p.ticker.replace(".NS","")} ›</b>
             <span style="color:${tone[p.health] || "var(--muted)"}">${p.health || "?"}</span></div>
           <div class="bs">${p.tier} · ${p.theme || "no theme"} ·
             ${p.value ? "₹" + Math.round(p.value).toLocaleString("en-IN") : "not bought yet"}
@@ -287,7 +452,7 @@ function render(d) {
     const cleared = g.cleared_theme || [];
     document.getElementById("cleared-n").textContent = `${cleared.length} in your themes`;
     document.getElementById("cleared").innerHTML = cleared.map(c => `
-      <div class="trow"><div><div class="tname">${c.ticker}</div>
+      <div class="trow tap" data-ticker="${c.ticker}"><div><div class="tname">${c.ticker} ›</div>
       <div class="tmeta">${c.theme}</div></div>
       <div class="conf">${cr(c.mcap_cr)}<div style="font-size:8.5px;color:var(--muted)">₹ cr</div></div>
       <div class="conf" style="font-size:10px;color:${c.pledge_pct > 10 ? "var(--warn)" : "var(--muted)"}">${
@@ -303,7 +468,7 @@ function render(d) {
           <div class="bh"><b>${label[b.band]}</b><span>${b.count} cleared</span></div>
           <div class="bs">growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} · momentum ${b.avg_momentum.toFixed(0)}</div>
           <div class="chips">${b.names.map(n =>
-            `<span class="cn">${n.ticker} <span>${cr(n.mcap_cr)}</span></span>`).join("")}</div>
+            `<span class="cn tap" data-ticker="${n.ticker}">${n.ticker} <span>${cr(n.mcap_cr)}</span></span>`).join("")}</div>
         </div>`).join("")
     : `<div class="card"><p>Not scored yet.</p></div>`;
 
