@@ -167,6 +167,60 @@ def themes() -> list[dict]:
     return json.loads(path.read_text(encoding="utf-8")).get("themes", [])
 
 
+@app.get("/api/folio")
+def folio() -> dict:
+    """Holdings, thesis health, concentration and what is due.
+
+    Read-only like the rest: positions are opened and tranches recorded from the
+    CLI, deliberately. Recording a purchase is a decision, and a decision made by
+    mistyping on a phone is a decision you did not mean to make.
+    """
+    from engine.portfolio import book
+
+    con = book.connect(read_only=book.portfolio_path().exists())
+    try:
+        held = book.holdings(con)
+        if held.empty:
+            return {"positions": [], "xray": {"positions": 0}, "plan": [],
+                    "note": "No positions yet. Open one with `investo folio open`."}
+
+        health = con.execute("""
+            SELECT position_id, health, reasons FROM thesis_health
+             WHERE as_of_date = (SELECT max(as_of_date) FROM thesis_health)
+        """).df()
+        merged = held.merge(health, on="position_id", how="left")
+
+        positions = json.loads(
+            merged[["ticker", "tier", "theme", "cost", "value", "pnl_pct",
+                    "weight_pct", "next_stage", "health", "reasons", "thesis"]]
+            .to_json(orient="records")
+        )
+        return {"positions": positions, "xray": book.xray(con),
+                "disclaimer": "Your record, not advice."}
+    finally:
+        con.close()
+
+
+@app.get("/api/folio/plan")
+def folio_plan(budget: float = 100000.0) -> list[dict]:
+    """How a monthly budget would split across tranches that are due.
+
+    Reads stored thesis health rather than recomputing it. A GET that writes is
+    wrong in principle, and here it was wrong in practice too: the app loads
+    this alongside /api/folio, and two concurrent connections to the same DuckDB
+    file — one of them for writing — collide, so the panel silently rendered
+    empty. Health is refreshed by `folio status` and by the nightly job.
+    """
+    from engine.portfolio import book
+
+    con = book.connect(read_only=True)
+    try:
+        plan = book.deployment_plan(con, budget)
+        return [] if plan.empty else json.loads(plan.to_json(orient="records"))
+    finally:
+        con.close()
+
+
 # The PWA is served last so /api/* wins any path collision.
 if PWA_DIR.exists():
     @app.get("/")

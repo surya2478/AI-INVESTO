@@ -93,7 +93,7 @@
   .note{margin:14px 20px 0;padding-top:12px;border-top:1px solid var(--line);
     font-family:var(--mono);font-size:9.5px;line-height:1.6;color:var(--muted)}
   nav{position:fixed;left:0;right:0;bottom:0;display:grid;
-    grid-template-columns:repeat(4,1fr);background:var(--surface);
+    grid-template-columns:repeat(5,1fr);background:var(--surface);
     border-top:1px solid var(--line);
     padding:9px 0 calc(9px + env(safe-area-inset-bottom))}
   nav button{background:none;border:0;color:var(--muted);font-family:var(--mono);
@@ -138,6 +138,16 @@
   <div class="board" id="cleared"></div>
 </section>
 
+<section id="view-folio" hidden>
+  <div class="band-label"><span>Positions</span><span id="folio-n"></span></div>
+  <div id="folio"></div>
+  <div class="band-label"><span>Due next</span><span>green theses only</span></div>
+  <div id="plan"></div>
+  <div class="note">Positions are opened and tranches recorded from the CLI, not
+  here. Recording a purchase is a decision, and one made by mistyping on a phone
+  is a decision you did not mean to make.</div>
+</section>
+
 <section id="view-about" hidden>
   <div class="card"><div class="tag">What this is</div>
     <h3>A research tool, not advice</h3>
@@ -164,6 +174,8 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 4 5-8 4 5"/></svg>Themes</button>
   <button data-view="screen">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l3 6 6 .8-4.5 4.2 1.2 6-5.7-3.2L6.3 20l1.2-6L3 9.8 9 9z"/></svg>Screen</button>
+  <button data-view="folio">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18v13H3z"/><path d="M8 7V4h8v3"/></svg>Folio</button>
   <button data-view="about">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>About</button>
 </nav>
@@ -181,11 +193,63 @@ const SHOW = ["IN_LARGE","IN_500","US_SP500","US_NDX","KOREA","TAIWAN","CHINA_HK
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
   const v = b.dataset.view;
-  ["today","themes","screen","about"].forEach(name =>
+  ["today","themes","screen","folio","about"].forEach(name =>
     document.getElementById("view-" + name).hidden = name !== v);
   document.getElementById("title").textContent =
-    { today:"Today", themes:"Themes", screen:"Screen", about:"About" }[v];
+    { today:"Today", themes:"Themes", screen:"Screen", folio:"Folio", about:"About" }[v];
+  if (v === "folio") loadFolio();
 });
+
+let folioLoaded = false;
+function loadFolio() {
+  if (folioLoaded) return;
+  folioLoaded = true;
+  const tone = { GREEN:"var(--pos)", AMBER:"var(--warn)", RED:"var(--neg)" };
+
+  fetch("/api/folio").then(r => r.json()).then(d => {
+    const pos = d.positions || [];
+    document.getElementById("folio-n").textContent =
+      pos.length ? `${pos.length} open` : "";
+    if (!pos.length) {
+      document.getElementById("folio").innerHTML =
+        `<div class="card"><p>${d.note || "No positions yet."}</p></div>`;
+      return;
+    }
+    const x = d.xray || {};
+    document.getElementById("folio").innerHTML =
+      pos.map(p => `
+        <div class="card" style="border-left:2px solid ${tone[p.health] || "var(--line)"}">
+          <div class="bh"><b>${p.ticker.replace(".NS","")}</b>
+            <span style="color:${tone[p.health] || "var(--muted)"}">${p.health || "?"}</span></div>
+          <div class="bs">${p.tier} · ${p.theme || "no theme"} ·
+            ${p.value ? "₹" + Math.round(p.value).toLocaleString("en-IN") : "not bought yet"}
+            ${p.pnl_pct != null ? " · " + signed(p.pnl_pct) + "%" : ""}
+            ${p.next_stage != null ? " · next stage " + p.next_stage : " · ladder complete"}</div>
+          ${p.reasons ? `<p style="margin-top:8px;font-size:11.5px;color:${tone[p.health]}">${p.reasons}</p>` : ""}
+          <p style="margin-top:8px;font-size:11.5px;color:var(--muted)">${p.thesis || ""}</p>
+        </div>`).join("") + `
+      <div class="card"><div class="tag">Concentration</div>
+        <div class="bs" style="margin-top:6px">${
+          Object.entries(x.theme_concentration || {}).slice(0,5)
+            .map(([k,v]) => `${k} ${v.toFixed(0)}%`).join(" · ")}</div>
+        ${x.largest_theme_pct > 40 ? `<p style="margin-top:8px;color:var(--warn);font-size:11.5px">
+          ${x.largest_theme_pct.toFixed(0)}% sits in one theme — check these are separate bets.</p>` : ""}
+      </div>`;
+  });
+
+  fetch("/api/folio/plan?budget=100000").then(r => r.json()).then(plan => {
+    document.getElementById("plan").innerHTML = (plan || []).length
+      ? plan.map(p => `
+          <div class="card"><div class="bh"><b>${p.ticker.replace(".NS","")}</b>
+            <span>stage ${p.stage}</span></div>
+          <div class="bs">₹${Math.round(p.allocate).toLocaleString("en-IN")} of a
+            ₹1,00,000 month</div>
+          <p style="margin-top:7px;font-size:11.5px;color:var(--muted)">${p.trigger || ""}</p>
+          </div>`).join("")
+      : `<div class="card"><p>Nothing due — every ladder is complete, or the
+         theses that would receive money are not green.</p></div>`;
+  });
+}
 
 function render(d) {
   document.getElementById("sub").textContent =

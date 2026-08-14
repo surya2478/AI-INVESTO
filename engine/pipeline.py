@@ -677,6 +677,153 @@ def gates(
         con.close()
 
 
+# ----------------------------------------------------------------- portfolio
+folio_app = typer.Typer(help="Portfolio: positions, staged buying, thesis health")
+app.add_typer(folio_app, name="folio")
+
+
+@folio_app.command("open")
+def folio_open(
+    ticker: str = typer.Argument(..., help="NSE symbol, e.g. WABAG"),
+    tier: str = typer.Option("SATELLITE", help="CORE | SATELLITE | WATCHLIST"),
+    thesis: str = typer.Option(..., "--thesis", help="Why, in your own words"),
+    theme: str = typer.Option(None, help="Theme label"),
+    weight: float = typer.Option(None, help="Target % of portfolio"),
+) -> None:
+    """Open a position as an intention, and lay out its three-tranche ladder."""
+    from engine.portfolio import book
+
+    con = book.connect()
+    try:
+        position_id = book.open_position(con, ticker, tier, thesis, theme, weight)
+        console.print(f"[green]opened[/green] {ticker.upper()} as {tier.upper()} "
+                      f"(position {position_id})")
+        ladder = con.execute("""
+            SELECT stage, planned_pct, trigger FROM tranches
+             WHERE position_id = ? ORDER BY stage
+        """, [position_id]).df()
+        table = Table(title="Ladder")
+        for col in ("stage", "share", "buy when"):
+            table.add_column(col)
+        for _, r in ladder.iterrows():
+            table.add_row(str(int(r.stage)), f"{r.planned_pct:.0f}%", r.trigger)
+        console.print(table)
+    finally:
+        con.close()
+
+
+@folio_app.command("buy")
+def folio_buy(
+    ticker: str = typer.Argument(...),
+    stage: int = typer.Option(..., help="Which tranche (1, 2 or 3)"),
+    shares: float = typer.Option(..., help="Shares bought"),
+    price: float = typer.Option(..., help="Price per share"),
+    note: str = typer.Option(None),
+) -> None:
+    """Record an executed tranche."""
+    from engine.portfolio import book
+
+    con = book.connect()
+    try:
+        book.record_buy(con, ticker, stage, shares, price, note=note)
+        console.print(f"[green]recorded[/green] {ticker.upper()} stage {stage}: "
+                      f"{shares:,.0f} @ {price:,.2f} = Rs {shares*price:,.0f}")
+    finally:
+        con.close()
+
+
+@folio_app.command("status")
+def folio_status() -> None:
+    """Holdings, thesis health and concentration."""
+    from engine.portfolio import book
+
+    con = book.connect()
+    try:
+        health = book.review_thesis(con)
+        held = book.holdings(con)
+        if held.empty:
+            console.print("[yellow]no open positions[/yellow] — "
+                          "start with `investo folio open TICKER --thesis \"...\"`")
+            return
+
+        merged = held.merge(health[["position_id", "health", "reasons"]],
+                            on="position_id", how="left")
+        table = Table(title="Positions")
+        for col in ("ticker", "tier", "cost", "value", "P&L", "weight", "next", "health"):
+            table.add_column(col, justify="right" if col not in ("ticker", "tier") else "left")
+        tone = {"GREEN": "green", "AMBER": "yellow", "RED": "red"}
+        for _, r in merged.iterrows():
+            colour = tone.get(r.health, "white")
+            table.add_row(
+                r.ticker.replace(".NS", ""), r.tier,
+                f"{r.cost:,.0f}" if r.cost else "—",
+                f"{r.value:,.0f}" if pd.notna(r.value) and r.value else "—",
+                f"{r.pnl_pct:+.1f}%" if pd.notna(r.pnl_pct) else "—",
+                f"{r.weight_pct:.1f}%" if pd.notna(r.weight_pct) else "—",
+                f"stage {int(r.next_stage)}" if pd.notna(r.next_stage) else "complete",
+                f"[{colour}]{r.health or '?'}[/{colour}]",
+            )
+        console.print(table)
+
+        for _, r in merged[merged.health.isin(["AMBER", "RED"])].iterrows():
+            console.print(f"  [yellow]{r.ticker.replace('.NS','')}[/yellow]: {r.reasons}")
+
+        x = book.xray(con)
+        console.print(f"\ninvested Rs {x['invested']:,.0f} · value Rs {x['value']:,.0f}"
+                      + (f" · {x['pnl_pct']:+.1f}%" if x.get("pnl_pct") is not None else ""))
+        if x.get("theme_concentration"):
+            top = list(x["theme_concentration"].items())[:4]
+            console.print("theme mix: " + " · ".join(f"{k} {v:.0f}%" for k, v in top))
+            if x["largest_theme_pct"] > 40:
+                console.print(f"[yellow]{x['largest_theme_pct']:.0f}% sits in one theme — "
+                              "check these are separate bets[/yellow]")
+    finally:
+        con.close()
+
+
+@folio_app.command("plan")
+def folio_plan(budget: float = typer.Argument(..., help="This month's investable amount")) -> None:
+    """Split a monthly budget across the tranches that are due."""
+    from engine.portfolio import book
+
+    con = book.connect()
+    try:
+        book.review_thesis(con)
+        plan = book.deployment_plan(con, budget)
+        if plan.empty:
+            console.print("[yellow]nothing due[/yellow] — every ladder is complete, "
+                          "or the theses that would receive money are not GREEN")
+            return
+        table = Table(title=f"Deploying Rs {budget:,.0f}")
+        for col in ("ticker", "tier", "stage", "allocate", "buy when"):
+            table.add_column(col, justify="right" if col == "allocate" else "left")
+        for _, r in plan.iterrows():
+            table.add_row(r.ticker.replace(".NS", ""), r.tier, f"stage {int(r.stage)}",
+                          f"Rs {r.allocate:,.0f}", (r.trigger or "")[:52])
+        console.print(table)
+        console.print("[dim]Only GREEN theses receive money. Adding to a broken "
+                      "thesis is the habit this is meant to interrupt.[/dim]")
+    finally:
+        con.close()
+
+
+@folio_app.command("note")
+def folio_note(
+    ticker: str = typer.Argument(...),
+    body: str = typer.Option(..., "--body"),
+    kind: str = typer.Option("NOTE", help="NOTE | REVIEW | EXIT"),
+) -> None:
+    """Add a journal entry."""
+    from engine.portfolio import book
+
+    con = book.connect()
+    try:
+        book.add_journal(con, ticker, body, kind)
+        console.print(f"[green]logged[/green] {kind.upper()} for {ticker.upper()}")
+    finally:
+        con.close()
+
+
 # ------------------------------------------------------------------ coverage
 @app.command()
 def coverage() -> None:

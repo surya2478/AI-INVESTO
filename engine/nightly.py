@@ -231,6 +231,25 @@ def stage_trends(con) -> str:
             f"{trailing} with India trailing")
 
 
+def stage_thesis_health(con) -> str:
+    """Re-check every open position against the night's fresh screen.
+
+    Runs after the gates so a newly failing gate shows up as an AMBER or RED
+    holding the next morning, rather than waiting to be noticed.
+    """
+    from engine.portfolio import book
+
+    folio = book.connect()
+    try:
+        health = book.review_thesis(folio)
+        if health.empty:
+            return "no open positions"
+        counts = health["health"].value_counts().to_dict()
+        return " · ".join(f"{k.lower()} {v}" for k, v in counts.items())
+    finally:
+        folio.close()
+
+
 def stage_gates(con) -> str:
     from engine.scoring import gates as gate_engine
 
@@ -259,6 +278,7 @@ def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
         _stage(report, "filings backfill", lambda: stage_filings_backfill(con, windows))
         _stage(report, "trends", lambda: stage_trends(con))
         _stage(report, "gates", lambda: stage_gates(con))
+        _stage(report, "thesis health", lambda: stage_thesis_health(con))
     finally:
         con.close()
 
