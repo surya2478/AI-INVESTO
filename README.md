@@ -97,6 +97,48 @@ already digital text and flattens the table structure the figures live in. And
 endpoint that ignores the schema — an unvalidated blob that looks like an answer
 is worse than a clear error.
 
+## The app
+
+FastAPI serves the analytics store read-only and hosts an installable PWA from
+the same origin, so the phone needs one address and no CORS handling.
+
+```bash
+scripts\serve_app.cmd
+```
+
+| Endpoint | |
+|---|---|
+| `/api/health` | bars, latest date, scored count |
+| `/api/today` | pulse, themes, screen, bands |
+| `/api/screen` | gate verdicts, filterable by verdict and theme |
+| `/api/company/{ticker}` | gates with reasons, pillars, financials, prices |
+| `/api/themes` | trend and divergence per theme |
+
+### Reaching it from a phone
+
+Tailscale, because it works away from home and needs no port forwarding. The
+Tailscale IP is on the `100.x` range; the phone must run the Tailscale app and
+be signed into the same account.
+
+```
+http://<tailscale-ip>:8000
+```
+
+**Enable Tailscale Serve for HTTPS.** Over plain HTTP the service worker will
+not register — browsers require a secure context off localhost — so offline
+caching and a proper install are both degraded. Serve issues a real certificate
+scoped to your tailnet:
+
+```bash
+tailscale serve --bg 8000
+```
+
+If that reports "Serve is not enabled on your tailnet", the CLI prints a
+`login.tailscale.com` link to enable it. That is an account setting and has to
+be done by the account owner.
+
+The LAN address (`192.168.x`) also works, but only on the same Wi-Fi.
+
 ## Automation
 
 A Windows scheduled task, `AI-Investo Nightly`, runs `scripts/run_nightly.cmd`
