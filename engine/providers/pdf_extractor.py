@@ -525,6 +525,93 @@ def parse_json_payload(text: str) -> dict:
         raise ProviderError(f"malformed JSON: {exc}; began {cleaned[start:start+160]!r}") from exc
 
 
+class OrderDisclosure(BaseModel):
+    """One order announcement, as read from its attachment."""
+
+    kind: Literal["ORDER_WIN", "ORDER_BOOK", "NEITHER"] = Field(
+        description="ORDER_WIN for a contract received; ORDER_BOOK for a total "
+                    "outstanding backlog; NEITHER for anything else, including "
+                    "tax, court and regulatory orders"
+    )
+    value: float | None = Field(
+        default=None, description="The headline amount as printed, not converted"
+    )
+    unit: Literal["crore", "lakh", "million", "billion", "rupees", "none"] = Field(
+        description="Unit the value is printed in; 'none' when there is no value"
+    )
+    currency: Literal["INR", "USD", "EUR", "OTHER", "none"] = Field(
+        description="Currency of the value. Export orders are often not in rupees."
+    )
+    customer: str | None = Field(default=None, description="Who placed the order")
+    scope: str | None = Field(default=None, description="What the order is for, one line")
+    # Free text, not an integer. Filings state execution as "24 months",
+    # "18-24 months", "by FY27" or "36 months from LOA date"; demanding an int
+    # rejected three of the first five documents over formatting, for a field
+    # nothing computes on.
+    execution_period: str | None = Field(
+        default=None, description="Execution period exactly as stated, e.g. '24 months'"
+    )
+    notes: str | None = Field(default=None, description="Anything ambiguous")
+
+
+ORDER_SYSTEM_PROMPT = """\
+You read Indian stock-exchange order announcements and report the order value.
+
+Rules:
+- ORDER_WIN is a contract the company has received. ORDER_BOOK is the total
+  outstanding backlog across all contracts. They are different things; never
+  report a single win as a book.
+- Report the value EXACTLY as printed and state its unit separately. Do not
+  convert between crore, lakh, million and billion.
+- State the currency. Export orders are often in USD or EUR, and treating those
+  as rupees overstates them severalfold.
+- If the document is a tax order, a court order, a regulatory direction, or any
+  other use of the word "order", set kind to NEITHER and value to null.
+- If several contracts are listed, report their stated total; if no total is
+  given, report null and say so in notes.
+- Never estimate. A null value is correct when the document states none.
+
+Reply with the JSON object only — no preamble, no markdown fences."""
+
+# Units as printed -> crore. Conversion happens here, never in the model.
+ORDER_UNIT_TO_CRORE = {
+    "crore": 1.0, "lakh": 0.01, "million": 0.1, "billion": 100.0, "rupees": 1e-7,
+}
+
+# Below this, an "order value" is a misread rather than a small contract.
+MIN_PLAUSIBLE_ORDER_CR = 1.0
+
+
+def order_value_in_crore(disclosure: "OrderDisclosure") -> float | None:
+    """Normalise to Rs crore, refusing anything that is not rupees.
+
+    A USD 50 million order is roughly Rs 415 crore at 83/USD, but the rate on the
+    announcement date is not known here, and guessing it would inject a silent
+    error into a forward-visibility metric. Foreign-currency orders are recorded
+    without a rupee value instead of with a wrong one.
+    """
+    if disclosure.kind == "NEITHER" or disclosure.value is None:
+        return None
+    if disclosure.currency != "INR":
+        return None
+    multiplier = ORDER_UNIT_TO_CRORE.get(disclosure.unit)
+    if multiplier is None:
+        return None
+
+    value = float(disclosure.value) * multiplier
+
+    # Plausibility floor. Companies announce orders to the exchange because they
+    # are material; SEBI's materiality tests mean an announced contract is
+    # essentially never worth a few lakh. One run returned Rs 0.04 crore for an
+    # NTPC Green order after reading "wins 200 MW" — a capacity figure taken as
+    # a rupee value. Anything under a crore is a misread, not a small order, and
+    # storing it would quietly corrupt an inflow total.
+    if value < MIN_PLAUSIBLE_ORDER_CR:
+        log.info("rejecting implausible order value: Rs %.4f cr", value)
+        return None
+    return value
+
+
 class BSEPDFProvider:
     """Fetch BSE result bundles and extract financials from the PDFs inside."""
 
@@ -707,18 +794,34 @@ class BSEPDFProvider:
                 .drop_duplicates("period_end", keep="first")
                 .drop(columns=["rank", "size_penalty"]).reset_index(drop=True))
 
-    def fetch_pdf(self, url: str) -> bytes:
-        """Download an announcement attachment."""
-        session = cr.Session(impersonate=BROWSER, headers={
-            **HEADERS, "Referer": f"{NSE_WWW}/companies-listing/corporate-filings-announcements",
-        })
-        session.get(NSE_WWW, timeout=settings.REQUEST_TIMEOUT)
-        response = session.get(url, timeout=120)
-        if response.status_code != 200:
-            raise ProviderError(f"PDF HTTP {response.status_code} for {url[-60:]}")
-        if not response.content.startswith(b"%PDF"):
-            raise ProviderError(f"not a PDF: {url[-60:]}")
-        return response.content
+    def fetch_pdf(self, url: str, tries: int = 3) -> bytes:
+        """Download an announcement attachment, retrying on a dropped connection.
+
+        The warm-up request is retried too: it previously used the short shared
+        timeout, so a slow NSE handshake failed the whole download even though
+        the transfer itself had 120 seconds.
+        """
+        last: Exception | None = None
+        for attempt in range(1, tries + 1):
+            try:
+                session = cr.Session(impersonate=BROWSER, headers={
+                    **HEADERS,
+                    "Referer": f"{NSE_WWW}/companies-listing/corporate-filings-announcements",
+                })
+                session.get(NSE_WWW, timeout=60)
+                response = session.get(url, timeout=120)
+                if response.status_code != 200:
+                    last = ProviderError(f"HTTP {response.status_code}")
+                elif not response.content.startswith(b"%PDF"):
+                    raise ProviderError(f"not a PDF: {url[-60:]}")
+                else:
+                    return response.content
+            except ProviderError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - retried
+                last = exc
+            time.sleep(attempt * 2.0)
+        raise ProviderError(f"PDF download failed after {tries} tries: {last}")
 
     def fetch_statement_pdf(
         self, zip_url: str, prefer_consolidated: bool = True
@@ -923,6 +1026,79 @@ class BSEPDFProvider:
             "cost_usd": getattr(raw_usage, "cost", None),
         }
         return parsed, usage
+
+    # ------------------------------------------------------- order documents
+    def extract_order(self, pdf_bytes: bytes,
+                      filename: str = "order.pdf") -> tuple[OrderDisclosure, dict]:
+        """Read an order announcement, reusing the statement plumbing.
+
+        Same trimming, capability-aware shaping, tolerant JSON recovery and
+        credit abort as the financials path — order intimations are short, so
+        this is a few paise per document rather than a few cents.
+        """
+        trimmed, note = trim_to_statement(pdf_bytes, max_pages=4)
+        log.debug("order pdf: %s", note)
+
+        client = self._client()
+        data_url = ("data:application/pdf;base64,"
+                    + base64.standard_b64encode(trimmed).decode("ascii"))
+
+        schema = strict_schema(OrderDisclosure)
+        if self.capabilities().get("tools", True):
+            shape = {
+                "tools": [{"type": "function", "function": {
+                    "name": "record_order",
+                    "description": "Record the order disclosed in this document.",
+                    "parameters": schema}}],
+                "tool_choice": {"type": "function", "function": {"name": "record_order"}},
+            }
+        else:
+            shape = {"response_format": {"type": "json_schema", "json_schema": {
+                "name": "order_disclosure", "strict": True, "schema": schema}}}
+
+        try:
+            response = client.chat.completions.create(
+                model=self.model, max_tokens=2000, **shape,
+                messages=[
+                    {"role": "system", "content": ORDER_SYSTEM_PROMPT},
+                    {"role": "user", "content": [
+                        {"type": "file",
+                         "file": {"filename": filename, "file_data": data_url}},
+                        {"type": "text",
+                         "text": "Extract the order details from this announcement."},
+                    ]},
+                ],
+                extra_body={
+                    "plugins": [{"id": "file-parser",
+                                 "pdf": {"engine": self.pdf_engine()}}],
+                    "provider": {"require_parameters": True},
+                    "usage": {"include": True},
+                },
+                extra_headers={"HTTP-Referer": "https://github.com/local/ai-investo",
+                               "X-Title": "AI-Investo"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            text = str(exc)
+            if "402" in text or "requires at least" in text or "insufficient" in text.lower():
+                raise InsufficientCredit(
+                    "OpenRouter balance too low. Top up at "
+                    "https://openrouter.ai/settings/credits") from exc
+            raise ProviderError(f"order extraction failed: {exc}") from exc
+
+        choice = response.choices[0] if response.choices else None
+        if choice is None:
+            raise ProviderError("no choices returned")
+
+        calls = getattr(choice.message, "tool_calls", None)
+        payload = (json.loads(calls[0].function.arguments) if calls
+                   else parse_json_payload(choice.message.content or ""))
+        try:
+            parsed = OrderDisclosure.model_validate(payload)
+        except ValidationError as exc:
+            raise ProviderError(f"order response did not match schema: {exc}") from exc
+
+        return parsed, {"model": response.model,
+                        "cost_usd": getattr(response.usage, "cost", None)}
 
     # ------------------------------------------------------------ conversion
     @staticmethod

@@ -85,6 +85,84 @@ def sync_orders(con, tickers: list[str], progress=None) -> dict:
 MAX_BOOK_AGE_DAYS = 450
 
 
+def enrich_unpriced(con, limit: int = 50, since_days: int = 540,
+                    model: str | None = None, progress=None) -> dict:
+    """Read the attachments of order events whose text carried no figure.
+
+    Aimed narrowly on purpose. Only events that are recent enough to matter,
+    have an attachment, and are still missing a value are sent — reading a
+    document that already yielded its number from the free text would be paying
+    for something we have.
+
+    Extracted values are written back with source 'pdf_llm' so the two tiers
+    stay distinguishable, and foreign-currency orders are recorded WITHOUT a
+    rupee figure rather than converted at a guessed rate.
+    """
+    from engine.providers.pdf_extractor import (
+        BSEPDFProvider,
+        InsufficientCredit,
+        order_value_in_crore,
+    )
+
+    provider = BSEPDFProvider(model=model)
+    floor = dt.date.today() - dt.timedelta(days=since_days)
+
+    targets = con.execute("""
+        SELECT o.security_id, s.ticker, o.event_date, o.kind, o.headline, o.pdf_url
+          FROM order_events o JOIN securities s ON s.security_id = o.security_id
+         WHERE o.value_cr IS NULL AND o.pdf_url IS NOT NULL
+           AND o.pdf_url LIKE '%.pdf' AND o.event_date >= ?
+         ORDER BY o.event_date DESC
+         LIMIT ?
+    """, [floor, limit]).df()
+
+    if targets.empty:
+        return {"attempted": 0, "priced": 0, "cost": 0.0,
+                "message": "nothing unpriced and recent enough to be worth reading"}
+
+    priced = neither = failed = foreign = 0
+    cost = 0.0
+    aborted = None
+
+    for index, record in enumerate(targets.itertuples(), 1):
+        try:
+            pdf = provider.fetch_pdf(record.pdf_url)
+            disclosure, usage = provider.extract_order(
+                pdf, filename=record.pdf_url.rsplit("/", 1)[-1])
+            cost += usage.get("cost_usd") or 0.0
+        except InsufficientCredit as exc:
+            aborted = str(exc)
+            break
+        except Exception as exc:  # noqa: BLE001 - one document must not end the run
+            log.debug("order pdf failed for %s: %s", record.ticker, exc)
+            failed += 1
+            if progress:
+                progress(index, len(targets), record.ticker, None)
+            continue
+
+        value = order_value_in_crore(disclosure)
+        if disclosure.kind == "NEITHER":
+            neither += 1
+        elif value is None and disclosure.value is not None:
+            foreign += 1
+
+        if value is not None:
+            con.execute("""
+                UPDATE order_events
+                   SET value_cr = ?, kind = ?, source = 'pdf_llm'
+                 WHERE security_id = ? AND event_date = ? AND headline = ?
+            """, [value, disclosure.kind, record.security_id,
+                  record.event_date, record.headline])
+            priced += 1
+
+        if progress:
+            progress(index, len(targets), record.ticker, value)
+
+    return {"attempted": len(targets), "priced": priced, "neither": neither,
+            "foreign_currency": foreign, "failed": failed, "cost": cost,
+            "aborted": aborted}
+
+
 def book_to_sales(con, as_of: dt.date | None = None,
                   max_age_days: int = MAX_BOOK_AGE_DAYS) -> pd.DataFrame:
     """Recently disclosed order book against trailing revenue.

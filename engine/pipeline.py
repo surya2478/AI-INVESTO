@@ -475,6 +475,62 @@ def ingest_orders(
         con.close()
 
 
+@ingest_app.command("order-pdfs")
+def ingest_order_pdfs(
+    limit: int = typer.Option(30, help="Documents to read this run"),
+    model: str = typer.Option(None, help="OpenRouter model id"),
+    days: int = typer.Option(540, help="Only events newer than this"),
+) -> None:
+    """Read attachments of order announcements whose text carried no figure."""
+    from engine.orders import book_to_sales, enrich_unpriced
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        started = dt.datetime.now()
+        console.print(f"reading up to [bold]{limit}[/bold] order attachments...\n")
+
+        def show(index, total, ticker, value):
+            mark = (f"[green]Rs {value:,.0f} cr[/green]" if value
+                    else "[dim]no rupee value[/dim]")
+            console.print(f"  [{index:>3}/{total}] {ticker.replace('.NS',''):<14} {mark}")
+
+        result = enrich_unpriced(con, limit=limit, since_days=days,
+                                 model=model, progress=show)
+
+        if result.get("message"):
+            console.print(f"[green]{result['message']}[/green]")
+            return
+        if result.get("aborted"):
+            console.print(f"\n[red]stopped: {result['aborted']}[/red]")
+
+        console.print(f"\n[bold]{result['priced']} of {result['attempted']} priced[/bold] "
+                      f"· {result.get('neither', 0)} were not orders "
+                      f"· {result.get('foreign_currency', 0)} in foreign currency "
+                      f"· {result['failed']} failed")
+        console.print(f"cost: [green]${result['cost']:.4f}[/green]"
+                      + (f" (${result['cost']/result['attempted']:.4f}/document)"
+                         if result["attempted"] else ""))
+
+        bts = book_to_sales(con)
+        if not bts.empty:
+            table = Table(title="Order book to sales")
+            for col in ("ticker", "book (₹cr)", "revenue (₹cr)", "years", "as of"):
+                table.add_column(col, justify="right" if col != "ticker" else "left")
+            for _, r in bts.head(12).iterrows():
+                if pd.isna(r.book_to_sales):
+                    continue
+                tone = "green" if r.book_to_sales >= 2 else "yellow" if r.book_to_sales >= 1 else "white"
+                table.add_row(str(r.ticker).replace(".NS", ""), f"{r.order_book_cr:,.0f}",
+                              f"{r.revenue_cr:,.0f}" if pd.notna(r.revenue_cr) else "—",
+                              f"[{tone}]{r.book_to_sales:.1f}x[/{tone}]", str(r.event_date)[:10])
+            console.print(table)
+
+        db.log_ingest(con, run_id, "order_pdfs", None, "OK", result["priced"], None, started)
+    finally:
+        con.close()
+
+
 @ingest_app.command("pledge")
 def ingest_pledge(
     themes_only: bool = typer.Option(False, help="Theme companies only"),
