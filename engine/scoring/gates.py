@@ -52,6 +52,7 @@ class GateContext:
     prices: pd.DataFrame           # date, close, volume
     events: pd.DataFrame           # corporate_events on or before as_of
     market_cap: float | None       # rupees
+    ownership: pd.DataFrame | None = None   # promoter holding and pledge
 
     def series(self, metric: str) -> pd.Series:
         """Quarterly values for one metric, oldest first."""
@@ -159,6 +160,37 @@ def gate_revenue_collapse(ctx: GateContext) -> GateResult:
                       f"Trailing revenue {change:+.0f}% year on year")
 
 
+def gate_promoter_pledge(ctx: GateContext) -> GateResult:
+    """Promoters who have borrowed against their stake.
+
+    A pledged promoter holding is a forced-seller in waiting: if the price
+    falls, the lender sells, which drives the price down further. It is one of
+    the most reliable precursors of a permanent loss in Indian small caps, and
+    it says nothing about the business -- which is why it is a gate rather than
+    a score input.
+
+    Measured against PROMOTER HOLDING, not total equity. See
+    NSEProvider.fetch_promoter_pledge for why the distinction matters.
+    """
+    if ctx.ownership is None or ctx.ownership.empty:
+        return GateResult("promoter_pledge", UNKNOWN, detail="No shareholding disclosure on record")
+
+    latest = ctx.ownership.sort_values("quarter_end").iloc[-1]
+    pledge = latest.get("promoter_pledge_pct")
+    if pledge is None or pd.isna(pledge):
+        return GateResult("promoter_pledge", UNKNOWN, detail="Disclosure carries no pledge figure")
+
+    pledge = float(pledge)
+    promoter = latest.get("promoter_pct")
+    holding = f", promoters hold {float(promoter):.1f}%" if pd.notna(promoter) else ""
+
+    if pledge > 20.0:
+        return GateResult("promoter_pledge", FAIL, pledge, 20.0,
+                          f"{pledge:.1f}% of the promoter stake is pledged{holding}")
+    return GateResult("promoter_pledge", PASS, pledge, 20.0,
+                      f"{pledge:.1f}% of the promoter stake is pledged{holding}")
+
+
 def gate_market_cap_band(ctx: GateContext) -> GateResult:
     """Too small to trade safely, or too large to multiply."""
     if ctx.market_cap is None or ctx.market_cap <= 0:
@@ -191,7 +223,7 @@ GATES: list[Callable[[GateContext], GateResult]] = [
     gate_sustained_losses,
     gate_revenue_collapse,
     gate_market_cap_band,
-    _needs("promoter_pledge", "Needs shareholding-pattern ingest"),
+    gate_promoter_pledge,
     _needs("cash_conversion", "Needs cash-flow statements; quarterly results omit them"),
     _needs("receivable_days", "Needs balance-sheet detail; quarterly results omit it"),
     _needs("related_party", "Needs annual report extraction"),
@@ -232,10 +264,17 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
         "SELECT market_cap FROM securities WHERE security_id = ?", [security_id]
     ).fetchone()
 
+    ownership = con.execute("""
+        SELECT quarter_end, filing_date, promoter_pct, promoter_pledge_pct, public_pct
+          FROM ownership_pit
+         WHERE security_id = ? AND filing_date <= ?
+    """, [security_id, as_of]).df()
+
     return GateContext(
         security_id=security_id, ticker=ticker, as_of=as_of,
         quarterly=quarterly, prices=prices, events=events,
         market_cap=float(cap[0]) if cap and cap[0] else None,
+        ownership=ownership,
     )
 
 

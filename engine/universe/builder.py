@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 
 import pandas as pd
+
+from engine.config import settings
 
 from engine.providers.nse_provider import INDEX_FILES, NSEProvider
 from engine.storage import db
@@ -272,6 +275,67 @@ def sync_filing_dates(con, start: dt.date, end: dt.date, provider=None) -> dict:
     con.unregister("staged_ann")
 
     return {"fetched": len(announcements), "stored": int(stored), "unparsed": unparsed}
+
+
+def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) -> dict:
+    """Load promoter holding and encumbrance for the given tickers."""
+    from engine.providers.nse_provider import NSEProvider
+
+    provider = provider or NSEProvider()
+    id_map = db.security_map(con)
+
+    rows, missing, failed = [], 0, 0
+    for index, ticker in enumerate(tickers, 1):
+        security_id = id_map.get(ticker)
+        if security_id is None:
+            missing += 1
+            continue
+        symbol = ticker.removesuffix(".NS")
+        try:
+            record = provider.fetch_promoter_pledge(symbol)
+        except Exception as exc:  # noqa: BLE001 - one company must not stop the run
+            log.debug("pledge failed for %s: %s", symbol, exc)
+            failed += 1
+            record = None
+
+        if record and record.get("quarter_end"):
+            rows.append({
+                "security_id": security_id,
+                "quarter_end": record["quarter_end"],
+                "filing_date": record.get("filing_date") or record["quarter_end"],
+                "promoter_pct": record.get("promoter_pct"),
+                "promoter_pledge_pct": record.get("promoter_pledge_pct"),
+                "fii_pct": None, "dii_pct": None,
+                "public_pct": record.get("public_pct"),
+                "source": "nse",
+            })
+        else:
+            missing += 1
+        if progress:
+            progress(index, len(tickers), symbol, bool(record))
+        time.sleep(settings.RATE_LIMIT_SLEEP)
+
+    if not rows:
+        return {"written": 0, "missing": missing, "failed": failed}
+
+    staged = pd.DataFrame(rows)
+    con.register("staged_pledge", staged)
+    con.execute("""
+        DELETE FROM ownership_pit
+         WHERE (security_id, quarter_end, filing_date) IN (
+               SELECT security_id, quarter_end, filing_date FROM staged_pledge)
+    """)
+    con.execute("""
+        INSERT INTO ownership_pit
+            (security_id, quarter_end, filing_date, promoter_pct,
+             promoter_pledge_pct, fii_pct, dii_pct, public_pct, source)
+        SELECT security_id, quarter_end, filing_date, promoter_pct,
+               promoter_pledge_pct, fii_pct, dii_pct, public_pct, source
+          FROM staged_pledge
+    """)
+    con.unregister("staged_pledge")
+
+    return {"written": len(staged), "missing": missing, "failed": failed}
 
 
 def investable_universe(

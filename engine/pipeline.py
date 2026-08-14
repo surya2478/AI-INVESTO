@@ -409,6 +409,66 @@ def ingest_yahoo(
         con.close()
 
 
+@ingest_app.command("pledge")
+def ingest_pledge(
+    themes_only: bool = typer.Option(False, help="Theme companies only"),
+    limit: int = typer.Option(0, help="Cap companies (0 = all)"),
+) -> None:
+    """Load promoter holding and encumbrance from NSE."""
+    from engine.universe.builder import investable_universe, sync_promoter_pledge
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        graph = load_theme_graph()
+        if themes_only:
+            tickers = graph.india_universe()
+        else:
+            seen = dict.fromkeys(graph.india_universe())
+            for ticker in investable_universe(con):
+                seen.setdefault(ticker, None)
+            tickers = list(seen)
+        if limit:
+            tickers = tickers[:limit]
+
+        console.print(f"fetching pledge disclosures for [bold]{len(tickers)}[/bold] companies...")
+        started = dt.datetime.now()
+        state = {"hit": 0}
+
+        def show(index, total, symbol, found):
+            if found:
+                state["hit"] += 1
+            if index % 50 == 0 or index == total:
+                console.print(f"  {index:>4}/{total}  {state['hit']} with disclosure")
+
+        result = sync_promoter_pledge(con, tickers, progress=show)
+        console.print(f"\n[green]{result['written']:,} disclosures[/green] stored "
+                      f"([yellow]{result['missing']} without data[/yellow], "
+                      f"{result['failed']} failed)")
+
+        worst = con.execute("""
+            SELECT s.ticker, o.promoter_pct, o.promoter_pledge_pct, o.quarter_end
+              FROM ownership_pit o JOIN securities s ON s.security_id = o.security_id
+             WHERE o.promoter_pledge_pct IS NOT NULL
+             ORDER BY o.promoter_pledge_pct DESC LIMIT 12
+        """).df()
+        if not worst.empty:
+            table = Table(title="Most pledged promoter stakes")
+            for col in ("ticker", "promoter %", "pledged % of stake", "as of"):
+                table.add_column(col, justify="right" if col != "ticker" else "left")
+            for _, r in worst.iterrows():
+                tone = "red" if r.promoter_pledge_pct > 20 else "yellow"
+                table.add_row(str(r.ticker),
+                              f"{r.promoter_pct:.1f}" if pd.notna(r.promoter_pct) else "-",
+                              f"[{tone}]{r.promoter_pledge_pct:.1f}[/{tone}]",
+                              str(r.quarter_end)[:10])
+            console.print(table)
+
+        db.log_ingest(con, run_id, "pledge", None, "OK", result["written"], None, started)
+    finally:
+        con.close()
+
+
 @ingest_app.command("pdf")
 def ingest_pdf(
     batch: int = typer.Option(10, help="Companies per batch"),

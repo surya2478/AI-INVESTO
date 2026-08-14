@@ -232,6 +232,72 @@ class NSEProvider:
         frame["source"] = self.name
         return frame.reset_index(drop=True)
 
+    def fetch_promoter_pledge(self, symbol: str) -> dict | None:
+        """Promoter holding and encumbrance for one company.
+
+        CAREFUL WITH THE DENOMINATOR. NSE's `percSharesPledged` is pledged shares
+        as a share of TOTAL ISSUED EQUITY, while the figure quoted in Indian
+        markets -- and the one a 20% gate threshold assumes -- is pledged shares
+        as a share of PROMOTER HOLDING. For WABAG the two are 9.12% and 47.8%.
+        Taking the reported field at face value would understate pledge about
+        fivefold and let genuinely encumbered promoters through the gate.
+
+        Both are returned, with the promoter-relative measure named explicitly.
+        """
+        session = self._api_session()
+        try:
+            session.get(f"{WWW}/get-quotes/equity?symbol={symbol}",
+                        timeout=settings.REQUEST_TIMEOUT)
+            response = session.get(
+                f"{WWW}/api/corporate-pledgedata?index=equities&symbol={symbol}",
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={"Referer": f"{WWW}/get-quotes/equity?symbol={symbol}"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(f"pledge fetch failed for {symbol}: {exc}") from exc
+
+        if response.status_code != 200:
+            raise ProviderError(f"pledge HTTP {response.status_code} for {symbol}")
+
+        try:
+            rows = (response.json() or {}).get("data") or []
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(f"pledge payload for {symbol}: {exc}") from exc
+        if not rows:
+            return None
+
+        record = rows[0]
+
+        def number(key):
+            raw = record.get(key)
+            if raw in (None, "", "-"):
+                return None
+            try:
+                return float(str(raw).replace(",", "").strip())
+            except ValueError:
+                return None
+
+        pledged = number("numSharesPledged")
+        promoter_shares = number("totPromoterHolding")
+        pledge_of_promoter = (
+            (pledged / promoter_shares * 100.0)
+            if pledged is not None and promoter_shares else None
+        )
+
+        return {
+            "symbol": symbol,
+            "quarter_end": _parse_date(record.get("shp")),
+            "filing_date": _parse_date(record.get("broadcastDt")),
+            "promoter_pct": number("percPromoterHolding"),
+            # The gate's measure: pledged as a share of what promoters hold.
+            "promoter_pledge_pct": pledge_of_promoter,
+            # As NSE reports it: pledged as a share of total issued equity.
+            "pledged_of_equity_pct": number("percSharesPledged"),
+            "shares_pledged": pledged,
+            "promoter_shares": promoter_shares,
+            "public_pct": number("totPublicHolding"),
+        }
+
     def fetch_fii_dii(self) -> pd.DataFrame:
         """Latest daily FII and DII cash-market flows (Rs crore)."""
         session = self._api_session()
