@@ -160,19 +160,37 @@ figures look public ~45 days before they were, inflating every backtest.
 - [ ] Stage 5 — portfolio, staged accumulation, journal
 - [x] Stage 6 — nightly automation (see above)
 
+### Fundamentals sources, and why there are three
+
+| Source | Covers | Filing date | Used for |
+|---|---|---|---|
+| `yfinance` | ~99% of the universe, 5–6 quarters + 4–5 annual years + annual cash flow | none | screening today |
+| `nse_xbrl` | 30 companies through Dec-2024 | real | backtesting |
+| `pdf_llm` | targeted, 2025 onward | real | backtesting, expense detail |
+
+Yahoo is primary because it is free, near-complete and current. It reports the
+*current* value of each figure and overwrites restatements in place, so there is
+no honest filing date — those rows carry `is_pit = FALSE` and
+`fundamentals_asof` excludes them unless asked. Screening asks "what is true
+now" and opts in; a backtest must not, or it tests a strategy on numbers that
+were not public at the time.
+
+PDF extraction was measured at 29% clean and ~$2 for a 9-hour run, against
+Yahoo's minutes and nothing. It is kept for the two things Yahoo cannot do:
+real filing dates, and the expense breakdown that operating leverage needs.
+
 ### Known limitations
 
 - **Survivorship.** NSE publishes no historical index membership and no
   delisted archive, so dated membership is only accurate from the first run
-  forward. A 2015–2026 backtest on today's constituents excludes every company
-  that failed, which flatters returns. Stage 3 must correct for this or state
-  it plainly in its output.
-- **No structured fundamentals after Dec-2024.** Both exchanges moved to
-  PDF-only filing under SEBI Integrated Filing. Until the extraction layer runs,
-  scoring would be on 18-month-old financials.
-- **Four gates cannot be evaluated yet** (cash conversion, receivable days,
-  related party, contingent liabilities) because quarterly results carry no
-  cash-flow or balance-sheet detail. They return UNKNOWN, which is not a pass —
-  so most names correctly show as UNVETTED rather than CLEARED.
+  forward. A backtest on today's constituents excludes every company that
+  failed, which flatters returns. Stage 3 must correct for this or state it
+  plainly in its output.
+- **Three gates still cannot be evaluated** — receivable days, related party
+  and contingent liabilities all need balance-sheet or annual-report detail no
+  free source carries. They return UNKNOWN, which is not a pass.
+- **Yahoo cash flow is annual only.** Quarterly comes back empty for every
+  Indian ticker checked, so cash conversion is a 4-year test and cannot detect
+  a recent deterioration.
 - **Divergence is unvalidated.** Whether a wide India-vs-global gap actually
   mean-reverts is a Stage 3 question. The UI states it as an observation.
