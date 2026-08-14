@@ -30,6 +30,7 @@ import pandas as pd
 
 from engine.config import settings
 
+from engine.providers.base import ProviderError
 from engine.providers.nse_provider import INDEX_FILES, NSEProvider
 from engine.storage import db
 
@@ -293,10 +294,17 @@ def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) 
         symbol = ticker.removesuffix(".NS")
         try:
             record = provider.fetch_promoter_pledge(symbol)
-        except Exception as exc:  # noqa: BLE001 - one company must not stop the run
-            log.debug("pledge failed for %s: %s", symbol, exc)
+        except ProviderError as exc:
+            # Network and API problems are expected and per-company.
+            log.debug("pledge unavailable for %s: %s", symbol, exc)
             failed += 1
             record = None
+        except Exception as exc:  # noqa: BLE001
+            # A code bug is NOT a data problem. Swallowing everything here once
+            # hid a NameError behind "0 with disclosure" for the whole universe,
+            # which looked like NSE had no data rather than a broken call.
+            log.exception("pledge code error on %s", symbol)
+            raise RuntimeError(f"pledge extraction is broken: {exc}") from exc
 
         if record and record.get("quarter_end"):
             rows.append({

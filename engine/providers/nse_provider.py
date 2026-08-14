@@ -53,6 +53,24 @@ INDEX_FILES = {
 }
 
 
+def _parse_date(value) -> dt.date | None:
+    """Parse the date forms NSE uses: '30-Jun-2026' and '14-Aug-2026 16:31:52'."""
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%d-%b-%Y",
+                "%d-%B-%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return dt.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 class NSEProvider:
     """Structural and regulatory data for the Indian market."""
 
