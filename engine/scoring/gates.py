@@ -22,7 +22,7 @@ in the output instead of being invisible by absence.
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import pandas as pd
@@ -52,6 +52,8 @@ class GateContext:
     prices: pd.DataFrame           # date, close, volume
     events: pd.DataFrame           # corporate_events on or before as_of
     market_cap: float | None       # rupees
+    # Defaults last: cash flow is annual-only, and ownership is a separate feed.
+    annual_frame: pd.DataFrame = field(default_factory=pd.DataFrame)
     ownership: pd.DataFrame | None = None   # promoter holding and pledge
 
     def series(self, metric: str) -> pd.Series:
@@ -59,6 +61,16 @@ class GateContext:
         if self.quarterly.empty or metric not in self.quarterly.columns:
             return pd.Series(dtype="float64")
         return self.quarterly[metric].dropna().sort_index()
+
+    def annual(self, metric: str) -> pd.Series:
+        """Annual values for one metric, oldest first.
+
+        Cash flow is only published annually for Indian companies, so anything
+        cash-based has to read this rather than `series`.
+        """
+        if self.annual_frame.empty or metric not in self.annual_frame.columns:
+            return pd.Series(dtype="float64")
+        return self.annual_frame[metric].dropna().sort_index()
 
     def ttm(self, metric: str, offset: int = 0) -> float | None:
         """Trailing four quarters, optionally ending `offset` quarters back."""
@@ -160,6 +172,48 @@ def gate_revenue_collapse(ctx: GateContext) -> GateResult:
                       f"Trailing revenue {change:+.0f}% year on year")
 
 
+def gate_cash_conversion(ctx: GateContext) -> GateResult:
+    """Years of reported profit that never became cash.
+
+    Profit is an opinion; cash is a fact. A company reporting cumulative profit
+    while cumulative operating cash flow is negative is either growing very
+    working-capital intensively or not really earning what it reports. This is
+    the strongest accounting-fraud filter available from public data, which is
+    why it is critical rather than advisory.
+
+    Deliberately NOT a fail on negative cash flow alone -- a genuine capacity
+    build consumes cash, and rejecting that would exclude exactly the
+    pre-inflection companies worth finding. The signal is the DIVERGENCE:
+    profits reported, cash absent.
+    """
+    cfo = ctx.annual("cfo")
+    pat = ctx.annual("pat")
+    if len(cfo) < 3 or len(pat) < 3:
+        return GateResult("cash_conversion", UNKNOWN,
+                          detail="Needs 3 years of cash-flow and profit history")
+
+    years = min(len(cfo), len(pat), 4)
+    cfo_total = float(cfo.iloc[-years:].sum())
+    pat_total = float(pat.iloc[-years:].sum())
+
+    if pat_total <= 0:
+        return GateResult("cash_conversion", PASS, detail=(
+            f"Cumulative {years}yr profit is not positive, so the profit-without-cash "
+            "divergence does not apply"))
+
+    ratio = cfo_total / pat_total
+    detail = (f"{years}yr cash flow Rs {cfo_total/1e7:,.0f} cr against profit "
+              f"Rs {pat_total/1e7:,.0f} cr ({ratio:.2f}x)")
+
+    if cfo_total < 0:
+        return GateResult("cash_conversion", FAIL, ratio, 0.0,
+                          f"{detail} — years of reported profit produced no cash")
+    if ratio < 0.4:
+        return GateResult("cash_conversion", FAIL, ratio, 0.4,
+                          f"{detail} — under 40% of profit converted to cash")
+    return GateResult("cash_conversion", PASS, ratio, 0.4, detail)
+
+
 def gate_promoter_pledge(ctx: GateContext) -> GateResult:
     """Promoters who have borrowed against their stake.
 
@@ -224,7 +278,7 @@ GATES: list[Callable[[GateContext], GateResult]] = [
     gate_revenue_collapse,
     gate_market_cap_band,
     gate_promoter_pledge,
-    _needs("cash_conversion", "Needs cash-flow statements; quarterly results omit them"),
+    gate_cash_conversion,
     _needs("receivable_days", "Needs balance-sheet detail; quarterly results omit it"),
     _needs("related_party", "Needs annual report extraction"),
     _needs("contingent_liabilities", "Needs annual report extraction"),
@@ -242,12 +296,16 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
     # only -- that is the whole reason the two are separated.
     facts = db.fundamentals_asof(con, as_of, security_ids=[security_id],
                                  periods=16, include_non_pit=True)
-    quarterly = pd.DataFrame()
+    quarterly = annual_frame = pd.DataFrame()
     if not facts.empty:
         q = facts[facts.period_type == "Q"]
         if not q.empty:
             quarterly = q.pivot_table(index="period_end", columns="metric",
                                       values="value", aggfunc="last").sort_index()
+        a = facts[facts.period_type == "A"]
+        if not a.empty:
+            annual_frame = a.pivot_table(index="period_end", columns="metric",
+                                         values="value", aggfunc="last").sort_index()
 
     prices = con.execute("""
         SELECT date, adj_close AS close, volume
@@ -272,7 +330,7 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
 
     return GateContext(
         security_id=security_id, ticker=ticker, as_of=as_of,
-        quarterly=quarterly, prices=prices, events=events,
+        quarterly=quarterly, annual_frame=annual_frame, prices=prices, events=events,
         market_cap=float(cap[0]) if cap and cap[0] else None,
         ownership=ownership,
     )

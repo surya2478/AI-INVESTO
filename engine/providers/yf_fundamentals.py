@@ -154,9 +154,63 @@ def fetch_annual(ticker: str) -> pd.DataFrame:
     return out.drop_duplicates(subset=["ticker", "period_end", "metric"], keep="first")
 
 
+# Cash-flow lines. ANNUAL ONLY -- Yahoo returns an empty quarterly cash-flow
+# frame for every Indian ticker checked, which is consistent with Indian
+# companies filing cash flows half-yearly at best.
+CASHFLOW_MAP = {
+    "Operating Cash Flow": "cfo",
+    "Free Cash Flow": "fcf",
+    "Capital Expenditure": "capex",
+}
+
+
+def fetch_cashflow(ticker: str) -> pd.DataFrame:
+    """Annual cash-flow lines — the input to the cash-conversion gate.
+
+    Cumulative operating cash flow against cumulative reported profit is the
+    single best accounting-fraud filter available from public data: profit is an
+    opinion, cash is a fact, and a company that reports years of profit without
+    generating cash is either growing very working-capital intensively or not
+    really earning it.
+    """
+    try:
+        frame = yf.Ticker(ticker).cashflow
+    except Exception as exc:  # noqa: BLE001
+        log.debug("yahoo cashflow failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for label, metric in CASHFLOW_MAP.items():
+        if label not in frame.index:
+            continue
+        for period, value in frame.loc[label].items():
+            if pd.isna(value):
+                continue
+            rows.append({
+                "ticker": ticker,
+                "period_end": pd.Timestamp(period).date(),
+                "period_type": "A",
+                "metric": metric,
+                "value": float(value),
+                "unit": "INR",
+                "source": "yfinance",
+            })
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(subset=["ticker", "period_end", "metric"], keep="first")
+
+
 def fetch_all(ticker: str) -> pd.DataFrame:
-    """Quarterly and annual lines for one ticker."""
-    frames = [f for f in (fetch_quarterly(ticker), fetch_annual(ticker)) if not f.empty]
+    """Quarterly income, annual income and annual cash-flow lines."""
+    frames = [
+        f for f in (fetch_quarterly(ticker), fetch_annual(ticker), fetch_cashflow(ticker))
+        if not f.empty
+    ]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
