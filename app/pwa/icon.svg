@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0B1317"/>
+  <!-- Two legs of a theme: the global line leads flat, the India line diverges.
+       The gap between them is the product. -->
+  <polyline points="80,330 150,300 220,250 290,215 360,170 432,130"
+            fill="none" stroke="#5FA8C7" stroke-width="20"
+            stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+  <polyline points="80,370 150,362 220,345 290,330 360,290 432,225"
+            fill="none" stroke="#E9A23B" stroke-width="26"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="432" cy="225" r="24" fill="#E9A23B"/>
+</svg>

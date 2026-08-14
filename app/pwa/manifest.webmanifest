@@ -1,0 +1,19 @@
+{
+  "name": "AI-Investo",
+  "short_name": "Investo",
+  "description": "Personal research engine for Indian equities. Not investment advice.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1317",
+  "theme_color": "#0B1317",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

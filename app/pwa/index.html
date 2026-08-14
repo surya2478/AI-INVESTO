@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0B1317">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Investo">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.svg">
+<title>AI-Investo</title>
+<style>
+  /* Committed dark: this is a market app checked at night, and a light variant
+     would fight the semantic colours that carry meaning here. */
+  :root {
+    --ground:#0B1317; --surface:#121D22; --line:#22343B; --ink:#E6EEEF;
+    --muted:#7B959C; --india:#E9A23B; --global:#5FA8C7;
+    --pos:#4FB286; --neg:#D2695A; --warn:#E4C25C;
+    --mono: ui-monospace,"Cascadia Mono","SF Mono",Consolas,Menlo,monospace;
+    --sans: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    line-height:1.5;-webkit-font-smoothing:antialiased;
+    padding-bottom:calc(64px + env(safe-area-inset-bottom));
+  }
+  header{padding:calc(14px + env(safe-area-inset-top)) 20px 10px}
+  .wordmark{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--india)}
+  h1{margin:6px 0 2px;font-size:27px;letter-spacing:-.025em;font-weight:650}
+  .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .band-label{display:flex;justify-content:space-between;align-items:center;
+    padding:0 20px;margin:20px 0 9px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .pulse{display:flex;gap:8px;overflow-x:auto;padding:0 20px 4px;
+    scrollbar-width:none}
+  .pulse::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto;min-width:108px;padding:9px 11px;background:var(--surface);
+    border:1px solid var(--line);border-radius:4px}
+  .chip .nm{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted)}
+  .chip .lv{font-family:var(--mono);font-size:14px;margin-top:3px;
+    font-variant-numeric:tabular-nums}
+  .chip .ch{font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+  .pos{color:var(--pos)}.neg{color:var(--neg)}
+  .card{margin:0 20px 10px;padding:13px 14px;border-radius:5px;
+    background:var(--surface);border:1px solid var(--line)}
+  .card.accent{border-left:2px solid var(--india)}
+  .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--india)}
+  .card h3{margin:7px 0 5px;font-size:15.5px;letter-spacing:-.015em;font-weight:620}
+  .card p{margin:0;font-size:12.5px;line-height:1.5;color:#C3D3D6}
+  .verdicts{display:flex;gap:6px;margin:0 20px 10px}
+  .v{flex:1;padding:8px 6px;border-radius:4px;text-align:center;
+    background:var(--surface);border:1px solid var(--line)}
+  .v b{display:block;font-family:var(--mono);font-size:16px;
+    font-variant-numeric:tabular-nums}
+  .v span{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted)}
+  .v.rej b{color:var(--neg)}.v.fla b{color:var(--warn)}
+  .v.unv b{color:var(--muted)}.v.cle b{color:var(--pos)}
+  .bandbox{margin:0 20px 10px;padding:12px 13px;border-radius:5px;
+    background:var(--surface);border:1px solid var(--line)}
+  .bandbox.upper{border-left:2px solid var(--pos)}
+  .bandbox.middle{border-left:2px solid var(--muted)}
+  .bandbox.lower{border-left:2px solid var(--line)}
+  .bh{display:flex;justify-content:space-between;align-items:baseline;
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted)}
+  .bh b{color:var(--ink);font-size:11px}
+  .bs{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:5px;
+    font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .cn{font-family:var(--mono);font-size:10.5px;padding:3px 7px;
+    border:1px solid var(--line);border-radius:3px;cursor:pointer}
+  .cn span{color:var(--muted);font-size:9px}
+  .trow{display:grid;grid-template-columns:1fr 76px 40px;gap:10px;
+    align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+  .board{padding:0 20px}
+  .tname{font-size:13.5px;font-weight:560}
+  .tmeta{display:flex;gap:6px;margin-top:4px;font-family:var(--mono);
+    font-size:9.5px;color:var(--muted)}
+  .pill{font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;
+    text-transform:uppercase;padding:2px 5px;border-radius:2px;
+    border:1px solid currentColor}
+  .st-ACCELERATING{color:var(--pos)}.st-EMERGING{color:var(--india)}
+  .st-BASING{color:var(--muted)}.st-CROWDED{color:var(--warn)}
+  .st-FADING{color:var(--neg)}
+  .conf{text-align:right;font-family:var(--mono);font-size:12px;
+    font-variant-numeric:tabular-nums}
+  .note{margin:14px 20px 0;padding-top:12px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:9.5px;line-height:1.6;color:var(--muted)}
+  nav{position:fixed;left:0;right:0;bottom:0;display:grid;
+    grid-template-columns:repeat(4,1fr);background:var(--surface);
+    border-top:1px solid var(--line);
+    padding:9px 0 calc(9px + env(safe-area-inset-bottom))}
+  nav button{background:none;border:0;color:var(--muted);font-family:var(--mono);
+    font-size:9px;letter-spacing:.06em;text-transform:uppercase;
+    display:flex;flex-direction:column;align-items:center;gap:4px}
+  nav button.on{color:var(--india)}
+  nav svg{width:17px;height:17px}
+  .stale{margin:0 20px 10px;padding:8px 11px;border-radius:4px;
+    border:1px solid var(--warn);color:var(--warn);
+    font-family:var(--mono);font-size:10px}
+  section[hidden]{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">AI-Investo</div>
+  <h1 id="title">Today</h1>
+  <div class="sub" id="sub">loading…</div>
+</header>
+
+<div id="staleness"></div>
+
+<section id="view-today">
+  <div class="band-label"><span>Market pulse</span></div>
+  <div class="pulse" id="pulse"></div>
+  <div class="band-label"><span>Worth a look</span></div>
+  <div id="attention"></div>
+  <div class="band-label"><span>Screening</span><span id="screen-count"></span></div>
+  <div class="verdicts" id="verdicts"></div>
+  <div class="band-label"><span>Score bands</span><span>not a ranking</span></div>
+  <div id="bands"></div>
+  <div class="note" id="disclaimer"></div>
+</section>
+
+<section id="view-themes" hidden>
+  <div class="band-label"><span>Theme board</span><span id="theme-count"></span></div>
+  <div class="board" id="board"></div>
+</section>
+
+<section id="view-screen" hidden>
+  <div class="band-label"><span>Cleared companies</span><span id="cleared-n"></span></div>
+  <div class="board" id="cleared"></div>
+</section>
+
+<section id="view-about" hidden>
+  <div class="card"><div class="tag">What this is</div>
+    <h3>A research tool, not advice</h3>
+    <p>Every figure is computed from public market data. The gates reject
+    companies on measurable grounds and show the number behind each rejection.
+    Nothing here is a recommendation, and no position sizing is implied.</p></div>
+  <div class="card"><div class="tag">Why bands, not ranks</div>
+    <h3>The score failed its backtest</h3>
+    <p>Over three annual rebalances the top decile returned 42.0% against a
+    universe mean of 31.3% — but the bottom decile returned 49.7% and rank
+    correlation was −0.078. The relationship is U-shaped, so the score groups
+    companies rather than ordering them.</p></div>
+  <div class="card"><div class="tag">Known gaps</div>
+    <h3>What is not modelled</h3>
+    <p>Order books and capacity, which live only in filings prose. Segment mix,
+    so a company with 5% theme revenue scores like a pure play. Three of twelve
+    gates lack data and report unknown, which is never treated as a pass.</p></div>
+</section>
+
+<nav>
+  <button class="on" data-view="today">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Today</button>
+  <button data-view="themes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 4 5-8 4 5"/></svg>Themes</button>
+  <button data-view="screen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l3 6 6 .8-4.5 4.2 1.2 6-5.7-3.2L6.3 20l1.2-6L3 9.8 9 9z"/></svg>Screen</button>
+  <button data-view="about">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>About</button>
+</nav>
+
+<script>
+const fmt = (v, d = 1) => v == null ? "—"
+  : v.toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d });
+const signed = (v, d = 1) => (v > 0 ? "+" : "") + fmt(v, d);
+const cr = v => v == null ? "" : v >= 1000 ? (v / 1000).toFixed(1) + "k" : v.toFixed(0);
+
+const PULSE = { IN_LARGE:"Nifty 50", IN_500:"Nifty 500", US_SP500:"S&P 500",
+  US_NDX:"Nasdaq 100", KOREA:"Kospi", TAIWAN:"Taiwan", CHINA_HK:"Hang Seng" };
+const SHOW = ["IN_LARGE","IN_500","US_SP500","US_NDX","KOREA","TAIWAN","CHINA_HK"];
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  const v = b.dataset.view;
+  ["today","themes","screen","about"].forEach(name =>
+    document.getElementById("view-" + name).hidden = name !== v);
+  document.getElementById("title").textContent =
+    { today:"Today", themes:"Themes", screen:"Screen", about:"About" }[v];
+});
+
+function render(d) {
+  document.getElementById("sub").textContent =
+    `${d.securities} securities · ${d.bars.toLocaleString("en-IN")} bars · as of ${d.as_of}`;
+
+  // Honest staleness: market data that is quietly old is worse than a label.
+  const age = Math.floor((Date.now() - new Date(d.as_of + "T00:00:00")) / 86400000);
+  document.getElementById("staleness").innerHTML = age > 4
+    ? `<div class="stale">Data is ${age} days old — the pipeline has not run recently.</div>` : "";
+
+  const byId = Object.fromEntries((d.pulse || []).map(p => [p.label, p]));
+  document.getElementById("pulse").innerHTML = SHOW.map(k => byId[k])
+    .filter(p => p && p.level != null).map(p => `
+      <div class="chip"><div class="nm">${PULSE[p.label] || p.label}</div>
+      <div class="lv">${fmt(p.level, p.level > 1000 ? 0 : 2)}</div>
+      <div class="ch ${p.d_1m >= 0 ? "pos" : "neg"}">${signed(p.d_1m)}% <span style="color:var(--muted)">1m</span></div>
+      <div class="ch ${p.m_12m >= 0 ? "pos" : "neg"}">${signed(p.m_12m)}% <span style="color:var(--muted)">1y</span></div></div>`).join("");
+
+  const themes = d.themes || [];
+  const focus = themes.find(t => t.divergence?.state === "INDIA_TRAILING") || themes[0];
+  document.getElementById("attention").innerHTML = focus ? `
+    <div class="card accent"><div class="tag">${
+      focus.divergence?.state === "INDIA_TRAILING" ? "India trailing its global leg" : "Theme in focus"}</div>
+    <h3>${focus.name}</h3><p>${focus.divergence?.text || ""}</p></div>` : "";
+
+  const g = d.gates || {};
+  if (g.available) {
+    const v = g.verdicts || {};
+    document.getElementById("screen-count").textContent = `${g.companies} companies`;
+    document.getElementById("verdicts").innerHTML = [
+      ["REJECTED","rejected","rej"],["FLAGGED","flagged","fla"],
+      ["UNVETTED","unvetted","unv"],["CLEARED","cleared","cle"]
+    ].map(([k,l,c]) => `<div class="v ${c}"><b>${v[k]||0}</b><span>${l}</span></div>`).join("");
+
+    const cleared = g.cleared_theme || [];
+    document.getElementById("cleared-n").textContent = `${cleared.length} in your themes`;
+    document.getElementById("cleared").innerHTML = cleared.map(c => `
+      <div class="trow"><div><div class="tname">${c.ticker}</div>
+      <div class="tmeta">${c.theme}</div></div>
+      <div class="conf">${cr(c.mcap_cr)}<div style="font-size:8.5px;color:var(--muted)">₹ cr</div></div>
+      <div class="conf" style="font-size:10px;color:${c.pledge_pct > 10 ? "var(--warn)" : "var(--muted)"}">${
+        c.pledge_pct == null ? "n/d" : c.pledge_pct.toFixed(0) + "%"}
+        <div style="font-size:8.5px;color:var(--muted)">pledge</div></div></div>`).join("");
+  }
+
+  const B = (g.bands || {});
+  const label = { UPPER:"Upper third", MIDDLE:"Middle third", LOWER:"Lower third" };
+  document.getElementById("bands").innerHTML = B.available
+    ? (B.bands || []).map(b => `
+        <div class="bandbox ${b.band.toLowerCase()}">
+          <div class="bh"><b>${label[b.band]}</b><span>${b.count} cleared</span></div>
+          <div class="bs">growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} · momentum ${b.avg_momentum.toFixed(0)}</div>
+          <div class="chips">${b.names.map(n =>
+            `<span class="cn">${n.ticker} <span>${cr(n.mcap_cr)}</span></span>`).join("")}</div>
+        </div>`).join("")
+    : `<div class="card"><p>Not scored yet.</p></div>`;
+
+  document.getElementById("theme-count").textContent = `${themes.length} themes`;
+  document.getElementById("board").innerHTML = themes.map(t => {
+    const dv = t.divergence || {};
+    const tone = dv.state === "INDIA_TRAILING" ? "var(--india)"
+      : dv.state === "INDIA_AHEAD" ? "var(--global)" : "var(--muted)";
+    const short = { INDIA_TRAILING:"india behind", INDIA_AHEAD:"india ahead", IN_LINE:"in line" };
+    return `<div class="trow"><div><div class="tname">${t.name}</div>
+      <div class="tmeta"><span class="pill st-${t.stage}">${t.stage}</span>
+      <span style="color:${tone}">${short[dv.state] || ""}</span><span>T${t.tier}</span></div></div>
+      <div></div><div class="conf">${t.confluence.toFixed(0)}</div></div>`;
+  }).join("");
+
+  document.getElementById("disclaimer").textContent =
+    "Research tool. Ranks nothing, explains everything. Every decision is yours.";
+}
+
+fetch("/api/today").then(r => r.json()).then(render).catch(err => {
+  document.getElementById("sub").textContent = "could not reach the engine";
+  document.getElementById("staleness").innerHTML =
+    `<div class="stale">Offline, and no cached data yet. Start the API and reload.</div>`;
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+}
+</script>
+</body>
+</html>
