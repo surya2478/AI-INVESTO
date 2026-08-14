@@ -29,6 +29,7 @@ from engine.config import settings
 from engine.providers.base import ProviderError
 from engine.providers.pdf_extractor import (
     BSEPDFProvider,
+    InsufficientCredit,
     adjacent_column_check,
     consistency_check,
 )
@@ -149,6 +150,8 @@ def process_company(con, provider, security_id: int, symbol: str) -> list[dict]:
             )
             facts = provider.to_facts(extracted, symbol, record.filing_date, period_end)
             outcome["cost"] = usage.get("cost_usd") or 0.0
+        except InsufficientCredit:
+            raise          # abort the batch; nothing is wrong with the statement
         except Exception as exc:  # noqa: BLE001 - see note above
             outcome.update(status="FAILED", problems=f"{type(exc).__name__}: {exc}"[:180])
             outcomes.append(outcome)
@@ -236,8 +239,14 @@ def run_batch(con, batch_size: int = 10, model: str | None = None,
 
     started = dt.datetime.now()
     outcomes: list[dict] = []
+    aborted = None
     for index, record in enumerate(companies.itertuples(), 1):
-        results = process_company(con, provider, record.security_id, record.exchange_symbol)
+        try:
+            results = process_company(con, provider, record.security_id,
+                                      record.exchange_symbol)
+        except InsufficientCredit as exc:
+            aborted = str(exc)
+            break
         outcomes.extend(results)
         if progress:
             clean = sum(1 for r in results if r.get("status") == "CLEAN")
@@ -254,6 +263,7 @@ def run_batch(con, batch_size: int = 10, model: str | None = None,
     clean = counts.get("CLEAN", 0)
 
     return {
+        "aborted": aborted,
         "companies": len(companies),
         "attempted": attempted,
         "clean": clean,

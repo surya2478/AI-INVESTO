@@ -74,6 +74,10 @@ BROWSER = "chrome"
 # the same figures days later and is excluded by ranking, not by this filter.
 TOOL_NAME = "record_financials"
 
+class InsufficientCredit(ProviderError):
+    """The account cannot pay for the request. Stop the run, do not record failures."""
+
+
 RESULT_ANNOUNCEMENT = re.compile(
     r"financial result|integrated filing|outcome of board meeting|unaudited result"
     r"|audited result|quarterly result",
@@ -874,6 +878,16 @@ class BSEPDFProvider:
                 },
             )
         except Exception as exc:  # noqa: BLE001 - surfaced with context
+            # A spent balance is not an extraction failure. Left as a normal
+            # error it would march through the universe marking every statement
+            # FAILED at zero cost, and the real reason would be buried in
+            # thousands of rows. Raise a distinct type so the batch stops.
+            text = str(exc)
+            if "402" in text or "requires at least" in text or "insufficient" in text.lower():
+                raise InsufficientCredit(
+                    "OpenRouter balance too low for file requests. Top up at "
+                    "https://openrouter.ai/settings/credits"
+                ) from exc
             raise ProviderError(f"OpenRouter call failed: {exc}") from exc
 
         choice = response.choices[0] if response.choices else None

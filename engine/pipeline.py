@@ -384,6 +384,11 @@ def ingest_pdf(
             console.print(f"[green]{result['message']}[/green]")
             return
 
+        if result.get("aborted"):
+            console.print(f"\n[red]run stopped: {result['aborted']}[/red]")
+            console.print("[dim]No statements were marked failed — nothing is wrong "
+                          "with the data. Re-run once the balance is topped up.[/dim]")
+
         rate = result["clean_rate"]
         tone = "green" if rate >= 0.7 else "yellow" if rate >= 0.4 else "red"
         console.print(
