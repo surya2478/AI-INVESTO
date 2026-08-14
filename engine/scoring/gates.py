@@ -204,7 +204,12 @@ CRITICAL = {"surveillance", "cash_conversion", "serial_dilution", "sustained_los
 
 # ----------------------------------------------------------------- execution
 def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateContext:
-    facts = db.fundamentals_asof(con, as_of, security_ids=[security_id], periods=16)
+    # include_non_pit=True: gates screen what is true TODAY, so Yahoo's
+    # current-value figures are exactly the right input. The Stage 3 backtest
+    # must call fundamentals_asof with the default and see filing-dated rows
+    # only -- that is the whole reason the two are separated.
+    facts = db.fundamentals_asof(con, as_of, security_ids=[security_id],
+                                 periods=16, include_non_pit=True)
     quarterly = pd.DataFrame()
     if not facts.empty:
         q = facts[facts.period_type == "Q"]

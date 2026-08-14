@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS fundamentals_pit (
     PRIMARY KEY (security_id, period_end, period_type, metric, filing_date)
 );
 
+-- FALSE means the row has no true filing date -- Yahoo reports the current
+-- value of a figure and overwrites restatements in place. Such rows are usable
+-- for screening today and must never reach a backtest, so `fundamentals_asof`
+-- excludes them unless asked for explicitly.
+ALTER TABLE fundamentals_pit ADD COLUMN IF NOT EXISTS is_pit BOOLEAN DEFAULT TRUE;
+
 CREATE TABLE IF NOT EXISTS ownership_pit (
     security_id        BIGINT NOT NULL,
     quarter_end        DATE   NOT NULL,

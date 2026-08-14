@@ -136,6 +136,77 @@ def sync_fundamentals(
     return {"written": written, "ok": ok, "empty": empty, "failed": failed}
 
 
+def sync_yahoo_fundamentals(con, tickers: list[str], progress=None) -> dict:
+    """Load Yahoo quarterly and annual figures as the primary screening source.
+
+    Stored with `is_pit = FALSE`: Yahoo reports the current value of each figure
+    and overwrites restatements in place, so there is no honest filing date to
+    record. `filing_date` is set to the period end purely to satisfy the primary
+    key -- it is NOT a publication date, which is exactly why these rows are
+    fenced off from as-of reads.
+    """
+    from engine.providers.yf_fundamentals import fetch_all
+
+    id_map = db.security_map(con)
+    written = 0
+    ok, empty = [], []
+
+    for index, ticker in enumerate(tickers, 1):
+        security_id = id_map.get(ticker)
+        if security_id is None:
+            empty.append(ticker)
+            continue
+
+        frame = fetch_all(ticker)
+        if frame.empty:
+            empty.append(ticker)
+            if progress:
+                progress(index, len(tickers), ticker, 0)
+            continue
+
+        staged = pd.DataFrame({
+            "security_id": security_id,
+            "period_end": frame["period_end"],
+            "period_type": frame["period_type"],
+            # Not a publication date. See docstring.
+            "filing_date": frame["period_end"],
+            "metric": frame["metric"],
+            "value": pd.to_numeric(frame["value"], errors="coerce"),
+            "unit": frame["unit"],
+            "source": "yfinance",
+            "is_pit": False,
+        }).dropna(subset=["value"])
+
+        if staged.empty:
+            empty.append(ticker)
+            continue
+
+        con.register("staged_yf", staged)
+        con.execute("""
+            INSERT INTO fundamentals_pit
+                (security_id, period_end, period_type, filing_date, metric,
+                 value, unit, source, is_pit)
+            SELECT s.security_id, s.period_end, s.period_type, s.filing_date,
+                   s.metric, s.value, s.unit, s.source, s.is_pit
+              FROM staged_yf s
+             WHERE NOT EXISTS (
+                   SELECT 1 FROM fundamentals_pit f
+                    WHERE f.security_id = s.security_id AND f.period_end = s.period_end
+                      AND f.period_type = s.period_type AND f.metric = s.metric
+                      AND f.filing_date = s.filing_date
+             )
+        """)
+        con.unregister("staged_yf")
+
+        written += len(staged)
+        ok.append(ticker)
+        if progress:
+            progress(index, len(tickers), ticker, len(staged))
+
+    return {"written": written, "ok": len(ok), "empty": len(empty),
+            "missing": empty[:20]}
+
+
 def coverage_report(con) -> pd.DataFrame:
     """Per-metric coverage, so gaps are visible before anything is scored."""
     return con.execute("""

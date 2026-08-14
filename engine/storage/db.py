@@ -168,18 +168,25 @@ def fundamentals_asof(
     metrics: list[str] | None = None,
     security_ids: list[int] | None = None,
     periods: int = 20,
+    include_non_pit: bool = False,
 ) -> pd.DataFrame:
     """Fundamentals visible on `as_of`, newest filing wins per period.
 
     This is the ONLY sanctioned way to read `fundamentals_pit` for scoring or
-    backtesting. Two guards are applied:
+    backtesting. Three guards are applied:
 
       1. `filing_date <= as_of` -- excludes figures not yet published.
       2. newest `filing_date` per (security, period, metric) -- so a later
          restatement supersedes the original *without* leaking backwards, since
          restatements filed after `as_of` are already excluded by guard 1.
+      3. `is_pit` -- sources without a real filing date (Yahoo, which reports
+         the current value and overwrites restatements in place) are excluded by
+         default. `include_non_pit=True` is for screening TODAY, where "what is
+         true now" is the right question. A backtest must never pass it.
     """
     clauses, params = ["f.filing_date <= ?"], [as_of]
+    if not include_non_pit:
+        clauses.append("coalesce(f.is_pit, TRUE)")
     if metrics:
         clauses.append(f"f.metric IN ({','.join('?' * len(metrics))})")
         params.extend(metrics)

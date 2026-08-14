@@ -349,6 +349,66 @@ def ingest_filings(
         con.close()
 
 
+@ingest_app.command("yahoo")
+def ingest_yahoo(
+    themes_only: bool = typer.Option(False, help="Theme companies only"),
+    limit: int = typer.Option(0, help="Cap companies (0 = all)"),
+) -> None:
+    """Pull quarterly and annual financials from Yahoo — the primary screening source.
+
+    Free and near-complete, but carries no filing date, so rows are stored with
+    is_pit = FALSE and are excluded from as-of reads. Screening today: yes.
+    Backtesting: never.
+    """
+    from engine.fundamentals import coverage_report, sync_yahoo_fundamentals
+    from engine.universe.builder import investable_universe
+
+    run_id = _run_id()
+    con = db.connect()
+    try:
+        graph = load_theme_graph()
+        if themes_only:
+            tickers = graph.india_universe()
+        else:
+            seen = dict.fromkeys(graph.india_universe())
+            for ticker in investable_universe(con):
+                seen.setdefault(ticker, None)
+            tickers = list(seen)
+        if limit:
+            tickers = tickers[:limit]
+
+        console.print(f"fetching Yahoo financials for [bold]{len(tickers)}[/bold] companies...")
+        started = dt.datetime.now()
+
+        state = {"hit": 0}
+
+        def show(index, total, ticker, rows):
+            if rows:
+                state["hit"] += 1
+            if index % 25 == 0 or index == total:
+                console.print(f"  {index:>4}/{total}  {state['hit']} with data")
+
+        result = sync_yahoo_fundamentals(con, tickers, progress=show)
+
+        console.print(f"\n[green]{result['written']:,} facts[/green] from "
+                      f"{result['ok']} companies "
+                      f"([yellow]{result['empty']} returned nothing[/yellow])")
+
+        cov = coverage_report(con)
+        table = Table(title="Fundamentals coverage (all sources)")
+        for col in ("metric", "companies", "facts", "earliest", "latest"):
+            table.add_column(col, justify="right" if col != "metric" else "left")
+        for _, r in cov.head(14).iterrows():
+            table.add_row(str(r.metric), f"{int(r.companies):,}", f"{int(r.facts):,}",
+                          str(r.earliest)[:10], str(r.latest)[:10])
+        console.print(table)
+
+        db.log_ingest(con, run_id, "yahoo_fundamentals", None, "OK",
+                      result["written"], f"{result['ok']} companies", started)
+    finally:
+        con.close()
+
+
 @ingest_app.command("pdf")
 def ingest_pdf(
     batch: int = typer.Option(10, help="Companies per batch"),

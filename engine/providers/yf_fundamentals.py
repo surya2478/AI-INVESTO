@@ -116,6 +116,50 @@ def cross_check(
     return agreed, compared, problems
 
 
+def fetch_annual(ticker: str) -> pd.DataFrame:
+    """Annual income-statement lines — 4-5 years, enough for growth acceleration.
+
+    Quarterly history only reaches back 5-6 quarters, which cannot express a
+    2-year versus 4-year CAGR comparison. The annual series can.
+    """
+    try:
+        frame = yf.Ticker(ticker).income_stmt
+    except Exception as exc:  # noqa: BLE001
+        log.debug("yahoo annual failed for %s: %s", ticker, exc)
+        return pd.DataFrame()
+
+    if frame is None or frame.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for label, metric in ROW_MAP.items():
+        if label not in frame.index:
+            continue
+        for period, value in frame.loc[label].items():
+            if pd.isna(value):
+                continue
+            rows.append({
+                "ticker": ticker,
+                "period_end": pd.Timestamp(period).date(),
+                "period_type": "A",
+                "metric": metric,
+                "value": float(value),
+                "unit": "INR",
+                "source": "yfinance",
+            })
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(subset=["ticker", "period_end", "metric"], keep="first")
+
+
+def fetch_all(ticker: str) -> pd.DataFrame:
+    """Quarterly and annual lines for one ticker."""
+    frames = [f for f in (fetch_quarterly(ticker), fetch_annual(ticker)) if not f.empty]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
 def coverage_probe(tickers: list[str], limit: int = 25) -> pd.DataFrame:
     """How much of a universe Yahoo actually covers, before relying on it."""
     rows = []
