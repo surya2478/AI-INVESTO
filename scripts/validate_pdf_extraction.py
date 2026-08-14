@@ -105,56 +105,53 @@ def main() -> int:
         print("No XBRL facts stored — run `ingest fundamentals` first.", file=sys.stderr)
         return 1
 
-    print("building BSE scrip map...")
-    isin_to_scrip = bse_scrip_map()
     provider = BSEPDFProvider(model=args.model)
     print(f"model: {provider.model}\n")
 
     all_results = []
     for ticker, group in facts.groupby("ticker"):
         symbol = group["exchange_symbol"].iloc[0]
-        isin = group["isin"].iloc[0]
-        scrip = isin_to_scrip.get(isin)
-        if not scrip:
-            print(f"  {symbol:<14} no BSE scrip code for ISIN {isin} — skipped")
-            continue
 
         try:
-            bundles = provider.fetch_result_bundles(str(scrip))
+            documents = provider.fetch_result_documents(symbol)
         except ProviderError as exc:
-            print(f"  {symbol:<14} bundle list failed: {exc}")
+            print(f"  {symbol:<14} document list failed: {exc}")
             continue
-        if bundles.empty:
-            print(f"  {symbol:<14} no result bundles published")
+        if documents.empty:
+            print(f"  {symbol:<14} no result documents published")
             continue
 
         periods = sorted(group["period_end"].unique(), reverse=True)[: args.quarters]
         for period_end in periods:
             period_end = pd.Timestamp(period_end).date()
-            # Indian FY runs Apr-Mar; a quarter ending in month M sits in the
-            # FY that started the previous April when M <= 3.
-            fy_start = period_end.year - 1 if period_end.month <= 3 else period_end.year
-            fy_label = f"{fy_start}-{fy_start + 1}"
-            quarter_index = ((period_end.month - 4) % 12) // 3
 
-            match = bundles[(bundles.financial_year == fy_label)
-                            & (bundles.column_index == quarter_index)]
+            match = documents[documents.period_end == period_end]
             if match.empty:
-                print(f"  {symbol:<14} {period_end} no bundle for {fy_label} Q{quarter_index+1}")
+                print(f"  {symbol:<14} {period_end} no document for this quarter")
                 continue
 
-            period_start = (period_end.replace(day=1) - dt.timedelta(days=62)).replace(day=1)
+            # First day of the quarter: two calendar months back, not 62 days.
+            # Subtracting days lands in the wrong month for 31-day runs — for
+            # 31 Dec it gave 1 September, and the model faithfully echoed that
+            # four-month period back, which the span guard then rejected.
+            start_month = period_end.month - 2
+            start_year = period_end.year
+            if start_month <= 0:
+                start_month += 12
+                start_year -= 1
+            period_start = dt.date(start_year, start_month, 1)
             truth = (group[group.period_end == pd.Timestamp(period_end)]
                      .set_index("metric")["value"])
             filing_date = pd.Timestamp(
                 group[group.period_end == pd.Timestamp(period_end)]["filing_date"].iloc[0]
             ).date()
+            document = match.iloc[0]
+            name = document["pdf_url"].rsplit("/", 1)[-1]
 
             try:
-                pdf_bytes, name = provider.fetch_statement_pdf(match.iloc[0]["zip_url"])
+                pdf_bytes = provider.fetch_pdf(document["pdf_url"])
                 extracted, usage = provider.extract(
-                    pdf_bytes, period_start, period_end,
-                    filename=name.rsplit("/", 1)[-1],
+                    pdf_bytes, period_start, period_end, filename=name,
                 )
                 got = provider.to_facts(extracted, symbol, filing_date, period_end)
                 got_series = got.set_index("metric")["value"]
@@ -169,7 +166,7 @@ def main() -> int:
             matched, compared = int(result.match.sum()), len(result)
             cost = usage.get("cost_usd") or 0.0
             print(f"  {symbol:<14} {period_end}  {matched}/{compared} within "
-                  f"{TOLERANCE:.1%}  ${cost:.4f}  [{name.rsplit('/', 1)[-1]}]")
+                  f"{TOLERANCE:.1%}  ${cost:.4f}  [{name[:38]}]")
             for _, row in result[~result.match].iterrows():
                 print(f"      MISMATCH {row.metric:<16} xbrl={row.expected:>18,.0f} "
                       f"pdf={row.actual if pd.notna(row.actual) else float('nan'):>18,.0f} "

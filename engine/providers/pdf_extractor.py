@@ -48,6 +48,7 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import io
+import json
 import logging
 import os
 import re
@@ -56,16 +57,28 @@ from typing import Literal
 
 import pandas as pd
 from curl_cffi import requests as cr
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from engine.config import settings
 from engine.providers.base import ProviderError
+from engine.providers.bse_provider import parse_period_end
 
 log = logging.getLogger(__name__)
 
 BSE_API = "https://api.bseindia.com/BseIndiaAPI/api"
 BSE_WWW = "https://www.bseindia.com"
+NSE_WWW = "https://www.nseindia.com"
 BROWSER = "chrome"
+
+# Announcement types that carry the numbers. "Newspaper Publication" reprints
+# the same figures days later and is excluded by ranking, not by this filter.
+TOOL_NAME = "record_financials"
+
+RESULT_ANNOUNCEMENT = re.compile(
+    r"financial result|integrated filing|outcome of board meeting|unaudited result"
+    r"|audited result|quarterly result",
+    re.I,
+)
 HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"),
@@ -96,6 +109,36 @@ class QuarterlyFinancials(BaseModel):
         description="The unit the statement declares, e.g. '(Rs. in lakhs)'"
     )
     audited: bool | None = Field(default=None, description="True if audited, False if unaudited")
+
+    @field_validator("audited", mode="before")
+    @classmethod
+    def _coerce_audited(cls, value):
+        """Accept the wording the statements actually print.
+
+        Indian results head this column "Audited" / "Unaudited" / "Un-audited",
+        and models return that string rather than a boolean. Rejecting it would
+        measure schema compliance instead of extraction accuracy, on a field
+        that is metadata and never compared.
+        """
+        if isinstance(value, str):
+            text = value.strip().lower().replace("-", "").replace(" ", "")
+            if text in {"audited", "true", "yes"}:
+                return True
+            if text in {"unaudited", "false", "no"}:
+                return False
+            return None
+        return value
+
+    @field_validator("amounts_in", mode="before")
+    @classmethod
+    def _coerce_unit(cls, value):
+        """Map a printed unit header onto the enum, e.g. 'Rs. in Lakhs'."""
+        if isinstance(value, str):
+            text = value.strip().lower()
+            for unit in ("billions", "crores", "millions", "lakhs", "thousands", "rupees"):
+                if unit[:-1] in text:      # singular or plural
+                    return unit
+        return value
 
     revenue: float | None = Field(default=None, description="Revenue from operations")
     other_income: float | None = None
@@ -144,7 +187,81 @@ Further rules:
 - Report expenses as positive numbers, matching how the statement prints them.
 - Use null for any line the statement does not report. Never infer, derive, or
   compute a missing value from other lines.
+
+OUTPUT FORMAT: reply with the JSON object and nothing else. No preamble, no
+commentary, no markdown code fences, no notes after it. Put anything you would
+have said in prose into the extraction_notes field instead.
 """
+
+
+def strict_schema(model: type[BaseModel]) -> dict:
+    """Pydantic schema tightened to what strict JSON-schema mode requires.
+
+    Providers enforcing strict mode need every property listed in `required`,
+    `additionalProperties: false` on each object, and no `default` keys. Pydantic
+    emits none of that for fields with defaults, so it is normalised here.
+    Making optional fields required-but-nullable is deliberate: the model must
+    state a null rather than omit the line, which keeps "not reported"
+    distinguishable from "not answered".
+    """
+    schema = model.model_json_schema()
+
+    def tighten(node: dict) -> dict:
+        if node.get("type") == "object" or "properties" in node:
+            node["additionalProperties"] = False
+            node["required"] = list(node.get("properties", {}))
+            for child in node.get("properties", {}).values():
+                tighten(child)
+        node.pop("default", None)
+        for key in ("anyOf", "oneOf", "allOf"):
+            for child in node.get(key, []):
+                tighten(child)
+        for child in (node.get("$defs") or {}).values():
+            tighten(child)
+        return node
+
+    return tighten(schema)
+
+
+def _parse_announcement_date(value) -> dt.date | None:
+    """NSE stamps announcements as '12-Aug-2026 16:31:19'."""
+    if not isinstance(value, str):
+        return None
+    for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%d-%b-%Y"):
+        try:
+            return dt.datetime.strptime(value.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.I | re.M)
+
+
+def parse_json_payload(text: str) -> dict:
+    """Recover the JSON object from a reply that may carry prose or fences.
+
+    Models differ in how literally they take "JSON only" — some prepend a
+    heading, some wrap in fences. Since the point here is to compare models on
+    extraction accuracy, formatting habits should not decide the contest.
+    """
+    if not text:
+        raise ProviderError("empty response")
+
+    cleaned = _FENCE.sub("", text).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Fall back to the outermost braces, which survives prose on either side.
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start == -1 or end <= start:
+        raise ProviderError(f"no JSON object in response: {cleaned[:160]!r}")
+    try:
+        return json.loads(cleaned[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise ProviderError(f"malformed JSON: {exc}; began {cleaned[start:start+160]!r}") from exc
 
 
 class BSEPDFProvider:
@@ -183,38 +300,83 @@ class BSEPDFProvider:
             self._openai = OpenAI(base_url=settings.OPENROUTER_BASE_URL, api_key=key)
         return self._openai
 
-    # ------------------------------------------------------- bundle discovery
-    def fetch_result_bundles(self, scripcode: str) -> pd.DataFrame:
-        """Per-quarter result ZIPs a company has filed, newest financial year first."""
-        session = self._bse()
+    # ---------------------------------------------------- document discovery
+    def fetch_result_documents(self, symbol: str) -> pd.DataFrame:
+        """Result-statement PDFs a company has filed, from NSE announcements.
+
+        NOT from BSE's `FinancialResult` endpoint. That endpoint accepts a
+        scripcode and silently ignores it: WABAG, Siemens, ABB and UltraTech all
+        returned byte-identical bundles containing BSE Limited's OWN accounts.
+        Every extraction built on it was reading the wrong company, and nothing
+        in the response indicated a problem.
+
+        NSE's corporate-announcements API is keyed by symbol, returns full
+        attachment URLs, and carries the announcement timestamp -- which doubles
+        as the filing_date the point-in-time contract needs.
+        """
+        session = cr.Session(impersonate=BROWSER, headers={
+            **HEADERS, "Referer": f"{NSE_WWW}/get-quotes/equity?symbol={symbol}",
+        })
+        session.get(NSE_WWW, timeout=settings.REQUEST_TIMEOUT)
         response = session.get(
-            f"{BSE_API}/FinancialResult/w?scripcode={scripcode}&type=Q",
-            timeout=settings.REQUEST_TIMEOUT,
+            f"{NSE_WWW}/api/corporate-announcements?index=equities&symbol={symbol}",
+            timeout=60,
         )
         if response.status_code != 200:
-            raise ProviderError(f"BSE FinancialResult HTTP {response.status_code}")
+            raise ProviderError(f"NSE announcements HTTP {response.status_code} for {symbol}")
 
         try:
-            html = response.json()["Data"]
+            rows = response.json()
         except Exception as exc:  # noqa: BLE001
-            raise ProviderError(f"unexpected FinancialResult payload: {exc}") from exc
+            raise ProviderError(f"announcements not JSON for {symbol}: {exc}") from exc
 
-        rows = []
-        for row_html in re.findall(r"<tr>(.*?)</tr>", html, re.S):
-            year = re.search(r"(\d{4}-\d{4})", row_html)
-            if not year:
+        out = []
+        for record in rows or []:
+            desc = record.get("desc") or ""
+            text = f"{desc} {record.get('attchmntText') or ''}"
+            if not RESULT_ANNOUNCEMENT.search(text):
                 continue
-            # Columns run Q1..Q4 then the annual column, in that order.
-            links = re.findall(r'href=[\'"]?(/downloads1/[^\'">\s]+\.zip)', row_html)
-            for index, href in enumerate(links):
-                rows.append({
-                    "financial_year": year.group(1),
-                    "column_index": index,
-                    "quarter": f"Q{index + 1}" if index < 4 else "FY",
-                    "zip_url": f"{BSE_WWW}{href}",
-                })
+            url = record.get("attchmntFile") or ""
+            if not url.lower().endswith(".pdf"):
+                continue
+            period_end = parse_period_end(text)
+            if period_end is None:
+                continue
+            announced = _parse_announcement_date(record.get("an_dt"))
+            out.append({
+                "symbol": symbol,
+                "period_end": period_end,
+                "filing_date": announced,
+                "pdf_url": url,
+                "desc": desc,
+                "text": text[:300],
+            })
 
-        return pd.DataFrame(rows)
+        frame = pd.DataFrame(out)
+        if frame.empty:
+            return frame
+        # Prefer the board-meeting outcome / results filing over later
+        # newspaper reprints of the same numbers.
+        frame["rank"] = frame["desc"].map(
+            lambda d: 0 if re.search(r"outcome|integrated filing|financial result", d, re.I) else 1
+        )
+        return (frame.sort_values(["period_end", "rank", "filing_date"],
+                                  ascending=[False, True, True])
+                .drop_duplicates("period_end", keep="first")
+                .drop(columns="rank").reset_index(drop=True))
+
+    def fetch_pdf(self, url: str) -> bytes:
+        """Download an announcement attachment."""
+        session = cr.Session(impersonate=BROWSER, headers={
+            **HEADERS, "Referer": f"{NSE_WWW}/companies-listing/corporate-filings-announcements",
+        })
+        session.get(NSE_WWW, timeout=settings.REQUEST_TIMEOUT)
+        response = session.get(url, timeout=120)
+        if response.status_code != 200:
+            raise ProviderError(f"PDF HTTP {response.status_code} for {url[-60:]}")
+        if not response.content.startswith(b"%PDF"):
+            raise ProviderError(f"not a PDF: {url[-60:]}")
+        return response.content
 
     def fetch_statement_pdf(
         self, zip_url: str, prefer_consolidated: bool = True
@@ -303,11 +465,30 @@ class BSEPDFProvider:
         )
 
         try:
-            response = client.chat.completions.parse(
+            # No `temperature`: Claude models on OpenRouter do not list it as a
+            # supported parameter (reasoning models fix it), and with
+            # require_parameters set, sending it disqualifies every endpoint and
+            # returns a bare 404. The strict schema plus an explicit prompt does
+            # the work determinism would have.
+            # Forced tool-calling, NOT response_format. Measured on
+            # anthropic/claude-sonnet-5 via OpenRouter: response_format with
+            # strict:true was accepted and then ignored -- replies invented a
+            # `company` field, returned "Rs in Lakhs" where an enum was required,
+            # and nested other_income as an object. Providers enforce tool input
+            # schemas far more consistently than response_format, and forcing the
+            # call leaves the model no free-text path.
+            response = client.chat.completions.create(
                 model=self.model,
                 max_tokens=8000,
-                temperature=0,
-                response_format=QuarterlyFinancials,
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": TOOL_NAME,
+                        "description": "Record the extracted figures for one reporting period.",
+                        "parameters": strict_schema(QuarterlyFinancials),
+                    },
+                }],
+                tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": [
@@ -340,12 +521,23 @@ class BSEPDFProvider:
         if choice.finish_reason == "content_filter":
             raise ProviderError("provider filtered this document")
 
-        parsed = getattr(choice.message, "parsed", None)
-        if parsed is None:
-            raise ProviderError(
-                f"no structured output (finish_reason={choice.finish_reason}); "
-                f"content began: {(choice.message.content or '')[:120]!r}"
-            )
+        calls = getattr(choice.message, "tool_calls", None) or []
+        if calls:
+            payload = parse_json_payload(calls[0].function.arguments or "")
+        else:
+            # Some providers answer in prose despite a forced tool choice; the
+            # content may still hold the object.
+            payload = parse_json_payload(choice.message.content or "")
+
+        # Some providers nest the arguments under the tool name rather than
+        # returning them at the top level.
+        if set(payload) == {TOOL_NAME} and isinstance(payload[TOOL_NAME], dict):
+            payload = payload[TOOL_NAME]
+
+        try:
+            parsed = QuarterlyFinancials.model_validate(payload)
+        except ValidationError as exc:
+            raise ProviderError(f"response did not match the schema: {exc}") from exc
 
         raw_usage = response.usage
         usage = {
