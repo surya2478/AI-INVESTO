@@ -388,6 +388,93 @@ def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) 
     return {"written": len(staged), "missing": missing, "failed": failed}
 
 
+def sync_shareholding_history(con, tickers: list[str], provider=None,
+                              progress=None) -> dict:
+    """Backfill every shareholding pattern a company has filed.
+
+    APPEND-ONLY, unlike `sync_promoter_pledge`, which deletes and rewrites. A
+    filing that has been published cannot un-publish, and a revision arrives as
+    a new row with a later `filing_date` -- exactly the discipline
+    `fundamentals_pit` uses, so the same as-of read resolves both.
+
+    Rows carry `is_pit = True` because every date here is a broadcast timestamp
+    NSE recorded, not a deadline this code assumed.
+
+    Pledge is not in this feed, so `promoter_pledge_pct` is left NULL. Where the
+    pledge feed has already written a figure for the same quarter it keeps its
+    own row and, being stamped later, still wins the as-of read.
+    """
+    from engine.providers.nse_provider import NSEProvider
+
+    provider = provider or NSEProvider()
+    id_map = db.security_map(con)
+
+    rows, missing, failed = [], 0, 0
+    for index, ticker in enumerate(tickers, 1):
+        security_id = id_map.get(ticker)
+        if security_id is None:
+            missing += 1
+            continue
+        symbol = ticker.removesuffix(".NS")
+        try:
+            history = provider.fetch_shareholding_history(symbol)
+        except ProviderError as exc:
+            log.debug("shareholding unavailable for %s: %s", symbol, exc)
+            failed += 1
+            history = []
+        except Exception as exc:  # noqa: BLE001
+            # A code bug is not a data problem; the pledge path learned this the
+            # hard way when a NameError read as "no disclosure" for a universe.
+            log.exception("shareholding code error on %s", symbol)
+            raise RuntimeError(f"shareholding extraction is broken: {exc}") from exc
+
+        if not history:
+            missing += 1
+        for record in history:
+            filing_date, is_pit = ownership_filing_date(
+                record["quarter_end"], record.get("filing_date")
+            )
+            rows.append({
+                "security_id": security_id,
+                "quarter_end": record["quarter_end"],
+                "filing_date": filing_date,
+                "is_pit": is_pit,
+                "promoter_pct": record.get("promoter_pct"),
+                "promoter_pledge_pct": None,
+                "fii_pct": None, "dii_pct": None,
+                "public_pct": record.get("public_pct"),
+                "source": "nse_shp",
+            })
+        if progress:
+            progress(index, len(tickers), symbol, len(history))
+        time.sleep(settings.RATE_LIMIT_SLEEP)
+
+    if not rows:
+        return {"written": 0, "companies": 0, "missing": missing, "failed": failed}
+
+    staged = pd.DataFrame(rows).drop_duplicates(
+        subset=["security_id", "quarter_end", "filing_date"], keep="last")
+    con.register("staged_shp", staged)
+    con.execute("""
+        INSERT INTO ownership_pit
+            (security_id, quarter_end, filing_date, is_pit, promoter_pct,
+             promoter_pledge_pct, fii_pct, dii_pct, public_pct, source)
+        SELECT s.security_id, s.quarter_end, s.filing_date, s.is_pit, s.promoter_pct,
+               s.promoter_pledge_pct, s.fii_pct, s.dii_pct, s.public_pct, s.source
+          FROM staged_shp s
+         WHERE NOT EXISTS (
+               SELECT 1 FROM ownership_pit o
+                WHERE o.security_id = s.security_id
+                  AND o.quarter_end = s.quarter_end
+                  AND o.filing_date = s.filing_date
+         )
+    """)
+    con.unregister("staged_shp")
+
+    return {"written": len(staged), "companies": staged.security_id.nunique(),
+            "missing": missing, "failed": failed}
+
+
 def investable_universe(
     con, index_name: str = "NIFTY TOTAL MARKET", include_microcap: bool = True
 ) -> list[str]:

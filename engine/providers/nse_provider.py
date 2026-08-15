@@ -332,6 +332,86 @@ class NSEProvider:
             "public_pct": number("totPublicHolding"),
         }
 
+    def fetch_shareholding_history(self, symbol: str) -> list[dict]:
+        """Every shareholding pattern this company has filed, with its own date.
+
+        A DIFFERENT ENDPOINT from `fetch_promoter_pledge`, and the reason
+        ownership was unusable historically. The pledge feed returns one record
+        per company with no history, so `ownership_pit` ended up holding a single
+        quarter stamped with the scraper's clock, invisible at every past date.
+        This one returns about 23 quarters back to 2021, each with the broadcast
+        timestamp NSE recorded when the filing was published.
+
+        Those lags are real and vary enormously -- CG Power filed its Dec-2023
+        pattern in July 2024, seven months late, against a 20-day norm. A fixed
+        statutory-deadline assumption would have been wrong by five months on
+        that filing, and lateness is itself the behaviour the gates look for.
+
+        `date` is the date the holding is AS OF. It is usually a quarter end but
+        not always: companies file event-driven patterns after an allotment or a
+        promoter sale, and those are kept because they are the more current
+        picture, not discarded for having an inconvenient date.
+
+        Pledge is NOT in this feed. Promoter percentage is.
+        """
+        session = self._api_session()
+        try:
+            session.get(f"{WWW}/get-quotes/equity?symbol={symbol}",
+                        timeout=settings.REQUEST_TIMEOUT)
+            response = session.get(
+                f"{WWW}/api/corporate-share-holdings-master?index=equities&symbol={symbol}",
+                timeout=settings.REQUEST_TIMEOUT,
+                headers={"Referer": f"{WWW}/get-quotes/equity?symbol={symbol}"},
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(f"shareholding fetch failed for {symbol}: {exc}") from exc
+
+        if response.status_code != 200:
+            raise ProviderError(f"shareholding HTTP {response.status_code} for {symbol}")
+
+        try:
+            rows = response.json() or []
+        except Exception as exc:  # noqa: BLE001
+            raise ProviderError(f"shareholding payload for {symbol}: {exc}") from exc
+        if not isinstance(rows, list):
+            return []
+
+        def number(raw):
+            if raw in (None, "", "-"):
+                return None
+            try:
+                return float(str(raw).replace(",", "").strip())
+            except ValueError:
+                return None
+
+        out = []
+        for record in rows:
+            as_of = _parse_date(record.get("date"))
+            # `submissionDate` is the fallback: same event, coarser precision.
+            filed = (_parse_date(record.get("broadcastDate"))
+                     or _parse_date(record.get("submissionDate")))
+            if not as_of or not filed:
+                continue
+
+            promoter = number(record.get("pr_and_prgrp"))
+            public = number(record.get("public_val"))
+            # A holding percentage outside 0-100 is a data error, not an extreme
+            # reading, and must not become a gate verdict.
+            if promoter is not None and not 0.0 <= promoter <= 100.0:
+                log.debug("%s %s: implausible promoter holding %.1f", symbol, as_of, promoter)
+                promoter = None
+
+            out.append({
+                "symbol": symbol,
+                "quarter_end": as_of,
+                "filing_date": filed,
+                "promoter_pct": promoter,
+                "public_pct": public,
+                "is_revision": str(record.get("revisedData") or "").strip().upper() == "Y",
+                "xbrl_url": record.get("xbrl"),
+            })
+        return out
+
     def fetch_fii_dii(self) -> pd.DataFrame:
         """Latest daily FII and DII cash-market flows (Rs crore)."""
         session = self._api_session()

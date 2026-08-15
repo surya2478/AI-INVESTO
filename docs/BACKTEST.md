@@ -260,6 +260,62 @@ is small and well inside noise for seven observations — it should not be read 
 the fix working. Growth still earns nothing, which is what the four-variant test
 above already said it would.
 
+## Why quality fails — and the feed that was hiding half the question
+
+`ownership_pit` held 515 rows sharing ONE filing_date: the day the scraper ran.
+Since the scoring read filters `filing_date <= as_of`, promoter holding and
+pledge were invisible at every rebalance date. **15% of the quality pillar's
+weight had never been populated in any backtest that had ever run.**
+
+The cause was the endpoint, not the exchange. NSE's pledge feed returns one
+record per company with no history. A different endpoint,
+`corporate-share-holdings-master`, returns ~23 quarters each carrying the
+broadcast timestamp NSE recorded. Backfilled: **2,048 rows, 101 companies,
+425 distinct filing dates**, some reaching back to 2015. Filing lags are real
+and vary from 3 to 236 days — CG Power filed its Dec-2023 pattern seven months
+late, against a 20-day norm, and lateness is itself what the gates look for.
+
+| | Before | After |
+|---|---|---|
+| Promoter % coverage, 2022–25 | **0%** | **100%** |
+| Quality coverage at 2023 / 2025 | 49% / 97% | **64% / 97%** |
+| Dates where quality is scorable | 3 | **4** |
+| Quality mean IC | −0.160 | **−0.071** |
+| Composite mean IC | +0.072 | +0.073 |
+
+So the pillar became measurable and stayed negative. What drives it is not the
+missing ownership data:
+
+| Input | Weight | Coverage | Contribution |
+|---|---|---|---|
+| `cash_conversion` | 35% | 0% at 2023, 91% after | ~0 |
+| `roe` | 30% | 99–100% from 2023 | **−0.156** |
+| `debt_equity` | 20% | 99–100% from 2023 | **−0.127** (ranked descending) |
+| `promoter_pct` | 10% | now 100% from 2022 | +0.036 |
+| `pledge` | 5% | **still 0%** | none |
+
+**The mechanism is size, not valuation.** Unlike growth, ROE does not load on
+price — it correlates −0.16 to −0.28 with P/E, i.e. high-ROE names were *cheaper*.
+What it loads on is size: corr(ROE, market cap) +0.36 to +0.40, and
+corr(debt/equity, market cap) −0.22 to −0.25. High-ROE, low-debt companies are
+the large ones, and in a universe returning 54% a year on a small-cap melt-up,
+quality was a short-small-caps bet in disguise.
+
+**Which puts it in direct opposition to Discovery.** Correlation between the two
+pillars runs −0.33, −0.49, −0.52 and worsens each year. Discovery puts 70% of its
+weight on *small*; quality's two live inputs both proxy *large*. They are 20% and
+15% of the composite cancelling each other by construction — a large part of why
+the composite (+0.073) scores below its best single pillar (+0.164).
+
+Do NOT flip `debt_equity`. "Leverage outperformed across three years of a
+cyclical upswing" is the most regime-dependent claim in this document, and
+inverting a solvency preference on it would be the worst trade in the file. The
+defensible move is size-neutral ranking within the pillar, which removes the
+loading that is making Q and D cancel.
+
+Pledge remains without a historical source: it is not in the shareholding feed,
+and the pledge endpoint currently returns empty payloads for every symbol.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so
