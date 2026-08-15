@@ -36,6 +36,12 @@ SCHEMA = Path(__file__).resolve().parent.parent / "storage" / "portfolio_schema.
 
 TIERS = {"CORE": 4.0, "SATELLITE": 2.0, "WATCHLIST": 0.0}
 
+# How old a thesis review may be and still gate a purchase. `review_thesis` runs
+# nightly, so anything past a fortnight means the pipeline has been failing and
+# nobody noticed -- exactly the state in which the last known health is least
+# trustworthy. Money does not move on a stale verdict.
+HEALTH_MAX_AGE_DAYS = 14
+
 # The ladder from the spec: buy on signal, add when the next result confirms the
 # thesis, add again on confirmation or into weakness while the thesis holds.
 LADDER = [
@@ -247,24 +253,63 @@ def review_thesis(con, as_of: dt.date | None = None) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------- planner
-def deployment_plan(con, budget: float, analytics_db: Path | None = None) -> pd.DataFrame:
+def deployment_plan(con, budget: float, analytics_db: Path | None = None,
+                    as_of: dt.date | None = None) -> pd.DataFrame:
     """Split this month's money across the tranches that are actually due.
 
     Only positions whose thesis is currently GREEN receive money. Adding to a
     holding whose thesis has broken is the single most expensive habit this tool
     exists to interrupt.
+
+    The health check FAILS CLOSED. A position is funded only on a positive,
+    recent verdict; three states are all treated as "no":
+
+      * health is RED or AMBER      -- the thesis is in question,
+      * no health row at all        -- opened since the last review, never vetted,
+      * health older than HEALTH_MAX_AGE_DAYS -- the verdict predates the
+        evidence it was supposed to be checked against.
+
+    Absence of a warning is not a clearance. Defaulting the missing case to GREEN
+    would let a position that has never been reviewed draw money on its first
+    month, which is the one case this function exists to prevent.
     """
+    as_of = as_of or dt.date.today()
     book = holdings(con, analytics_db)
     if book.empty:
         return book
 
+    # Latest review PER POSITION, not the newest review in the table: a global
+    # max would silently treat one position's fresh verdict as evidence about
+    # another that has not been looked at in months.
     health = con.execute("""
-        SELECT position_id, health FROM thesis_health
-         WHERE as_of_date = (SELECT max(as_of_date) FROM thesis_health)
+        SELECT position_id, health, as_of_date AS health_as_of
+          FROM (
+            SELECT position_id, health, as_of_date,
+                   row_number() OVER (PARTITION BY position_id
+                                      ORDER BY as_of_date DESC) AS rn
+              FROM thesis_health
+          ) WHERE rn = 1
     """).df()
     book = book.merge(health, on="position_id", how="left")
 
-    due = book[(book["next_stage"].notna()) & (book["health"].fillna("GREEN") == "GREEN")].copy()
+    age_days = (pd.Timestamp(as_of) - pd.to_datetime(book.get("health_as_of"))).dt.days
+    book["health_age_days"] = age_days
+    fresh = age_days.between(0, HEALTH_MAX_AGE_DAYS)     # NaN -> False, fails closed
+    eligible = book["health"].eq("GREEN") & fresh        # NaN -> False, fails closed
+
+    held_back = book[book["next_stage"].notna() & ~eligible]
+    for row in held_back.itertuples():
+        if pd.isna(row.health):
+            why = "never reviewed"
+        elif pd.isna(row.health_age_days):
+            why = "review has no date"
+        elif not (0 <= row.health_age_days <= HEALTH_MAX_AGE_DAYS):
+            why = f"review is {int(row.health_age_days)} days old"
+        else:
+            why = f"thesis health is {row.health}"
+        log.warning("holding back %s: %s", row.ticker, why)
+
+    due = book[book["next_stage"].notna() & eligible].copy()
     if due.empty:
         return due
 
@@ -284,7 +329,7 @@ def deployment_plan(con, budget: float, analytics_db: Path | None = None) -> pd.
     due["allocate"] = budget * weights / weights.sum()
 
     return due[["ticker", "tier", "stage", "trigger", "value", "target_value",
-                "allocate", "health"]].sort_values("allocate", ascending=False)
+                "allocate", "health", "health_as_of"]].sort_values("allocate", ascending=False)
 
 
 def xray(con, analytics_db: Path | None = None) -> dict:
