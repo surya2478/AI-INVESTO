@@ -222,7 +222,8 @@ def shares_outstanding_asof(con, as_of: dt.date) -> pd.DataFrame:
     """, [as_of]).df()
 
 
-def attach_market_data(con, features: pd.DataFrame, as_of: dt.date) -> pd.DataFrame:
+def attach_market_data(con, features: pd.DataFrame, as_of: dt.date,
+                       include_non_pit: bool = True) -> pd.DataFrame:
     """Market cap, liquidity, ownership and price trend.
 
     MARKET CAP IS RECONSTRUCTED, NOT READ. `securities.market_cap` holds today's
@@ -268,10 +269,22 @@ def attach_market_data(con, features: pd.DataFrame, as_of: dt.date) -> pd.DataFr
           FROM w WHERE rn IN (1, 65, 252) GROUP BY security_id
     """, [as_of]).df()
 
-    ownership = con.execute("""
+    # Newest disclosure visible on the date, chosen explicitly. This was a
+    # `drop_duplicates(keep="last")` over an unordered result, so which quarter
+    # won was whatever order the database happened to return -- harmless while
+    # the table held a single quarter, and silently arbitrary the moment it
+    # holds history. Same defect as picking thesis health by a global max date.
+    ownership_clause = "" if include_non_pit else " AND coalesce(is_pit, TRUE)"
+    ownership = con.execute(f"""
         SELECT security_id, promoter_pct, promoter_pledge_pct
-          FROM ownership_pit WHERE filing_date <= ?
-    """, [as_of]).df().drop_duplicates("security_id", keep="last")
+          FROM (
+            SELECT security_id, promoter_pct, promoter_pledge_pct,
+                   row_number() OVER (PARTITION BY security_id
+                                      ORDER BY quarter_end DESC, filing_date DESC) AS rn
+              FROM ownership_pit
+             WHERE filing_date <= ?{ownership_clause}
+          ) WHERE rn = 1
+    """, [as_of]).df()
 
     out = (features
            .merge(profile, on="security_id", how="left")
@@ -473,7 +486,7 @@ def score_universe(con, as_of: dt.date | None = None, include_non_pit: bool = Tr
     features = build_features(con, as_of, include_non_pit=include_non_pit)
     if features.empty:
         return features
-    enriched = attach_market_data(con, features, as_of)
+    enriched = attach_market_data(con, features, as_of, include_non_pit=include_non_pit)
     if theme_scores is None:
         theme_scores, derived_exposure = theme_confluence(con, as_of)
         theme_exposure = theme_exposure or derived_exposure

@@ -106,6 +106,14 @@ CREATE TABLE IF NOT EXISTS ownership_pit (
     PRIMARY KEY (security_id, quarter_end, filing_date)
 );
 
+-- FALSE means `filing_date` was INFERRED from the statutory deadline rather than
+-- reported by the exchange. Ownership carried no such marker for a long time, so
+-- a row dated by the scraper's clock was indistinguishable from one dated by a
+-- real broadcast and nothing downstream could tell the difference. Every row in
+-- the table at the time this column was added shares ONE filing_date, equal to
+-- the ingest date, which is what that failure looks like from the outside.
+ALTER TABLE ownership_pit ADD COLUMN IF NOT EXISTS is_pit BOOLEAN DEFAULT TRUE;
+
 -- Corporate red flags with a discovery date, so gates can fire point-in-time.
 CREATE TABLE IF NOT EXISTS corporate_events (
     security_id  BIGINT  NOT NULL,

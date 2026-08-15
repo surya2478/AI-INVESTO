@@ -278,6 +278,40 @@ def sync_filing_dates(con, start: dt.date, end: dt.date, provider=None) -> dict:
     return {"fetched": len(announcements), "stored": int(stored), "unparsed": unparsed}
 
 
+# SEBI LODR Regulation 31: the shareholding pattern is due within 21 days of the
+# quarter end. Used only when the exchange gives no publication date of its own.
+OWNERSHIP_FILING_LAG_DAYS = 21
+
+
+def ownership_filing_date(quarter_end: dt.date,
+                          reported: dt.date | None) -> tuple[dt.date, bool]:
+    """When a shareholding pattern became public, and whether that is known.
+
+    Returns (filing_date, is_pit).
+
+    The old fallback dated an undated disclosure to the QUARTER END itself,
+    which asserts the pattern was public on the last day of the quarter it
+    describes. It is filed up to 21 days later, so that made ownership visible
+    about three weeks before it existed -- a leak in the same family as reading
+    today's market cap at a historical date, and pointing the same unsafe way.
+
+    Inferred dates use the statutory deadline, which is LATER than most real
+    filings and therefore conservative, and are marked `is_pit = False` so a
+    backtest can exclude them rather than trust a date nobody reported.
+
+    A reported date before the quarter even ended is not a filing date -- a
+    company cannot disclose a quarter's shareholding before that quarter closes
+    -- so it is rejected rather than believed.
+    """
+    deadline = quarter_end + dt.timedelta(days=OWNERSHIP_FILING_LAG_DAYS)
+    if reported is None or reported < quarter_end:
+        if reported is not None:
+            log.debug("ownership filing date %s precedes quarter end %s; using deadline",
+                      reported, quarter_end)
+        return deadline, False
+    return reported, True
+
+
 def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) -> dict:
     """Load promoter holding and encumbrance for the given tickers."""
     from engine.providers.nse_provider import NSEProvider
@@ -307,14 +341,22 @@ def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) 
             raise RuntimeError(f"pledge extraction is broken: {exc}") from exc
 
         if record and record.get("quarter_end"):
+            filing_date, is_pit = ownership_filing_date(
+                record["quarter_end"], record.get("filing_date")
+            )
+            promoter_pct = record.get("promoter_pct")
             rows.append({
                 "security_id": security_id,
                 "quarter_end": record["quarter_end"],
-                "filing_date": record.get("filing_date") or record["quarter_end"],
-                "promoter_pct": record.get("promoter_pct"),
+                "filing_date": filing_date,
+                "is_pit": is_pit,
+                "promoter_pct": promoter_pct,
                 "promoter_pledge_pct": record.get("promoter_pledge_pct"),
                 "fii_pct": None, "dii_pct": None,
-                "public_pct": record.get("public_pct"),
+                # A percentage, not the share count NSE reports under
+                # `totPublicHolding` -- which is what used to land here, so the
+                # column held figures like 687,313,904 in a field called _pct.
+                "public_pct": (100.0 - promoter_pct) if promoter_pct is not None else None,
                 "source": "nse",
             })
         else:
@@ -335,9 +377,9 @@ def sync_promoter_pledge(con, tickers: list[str], provider=None, progress=None) 
     """)
     con.execute("""
         INSERT INTO ownership_pit
-            (security_id, quarter_end, filing_date, promoter_pct,
+            (security_id, quarter_end, filing_date, is_pit, promoter_pct,
              promoter_pledge_pct, fii_pct, dii_pct, public_pct, source)
-        SELECT security_id, quarter_end, filing_date, promoter_pct,
+        SELECT security_id, quarter_end, filing_date, is_pit, promoter_pct,
                promoter_pledge_pct, fii_pct, dii_pct, public_pct, source
           FROM staged_pledge
     """)

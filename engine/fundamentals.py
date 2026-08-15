@@ -311,3 +311,35 @@ def pit_selftest(con, as_of: dt.date | None = None) -> dict:
         "leaked": leaked,
         "passed": leaked == 0,
     }
+
+
+def ownership_dating_report(con) -> dict:
+    """Whether ownership rows are dated by publication or by the scraper's clock.
+
+    A whole table sharing ONE filing_date is the signature of a feed stamped
+    with the ingest time rather than the disclosure time. That is not a leak --
+    an ingest date is later than the real filing, so it hides data rather than
+    revealing it early -- but it hid ALL of it: promoter holding and pledge were
+    invisible at every historical date, and 15% of the quality pillar's weight
+    had never been populated in any backtest that ran.
+
+    Nothing here rewrites the data, because whether a given date was a genuine
+    broadcast cannot be recovered after the fact. It reports the shape so the
+    question gets asked.
+    """
+    row = con.execute("""
+        SELECT count(*)                        AS rows,
+               count(DISTINCT filing_date)     AS distinct_filing_dates,
+               count(DISTINCT quarter_end)     AS quarters,
+               min(filing_date)                AS earliest,
+               max(filing_date)                AS latest,
+               sum(CASE WHEN coalesce(is_pit, TRUE) THEN 0 ELSE 1 END) AS inferred_dates,
+               sum(CASE WHEN filing_date < quarter_end THEN 1 ELSE 0 END) AS impossible_dates
+          FROM ownership_pit
+    """).df().to_dict("records")[0]
+
+    total = int(row["rows"] or 0)
+    distinct = int(row["distinct_filing_dates"] or 0)
+    row["single_date_for_whole_table"] = bool(total > 1 and distinct == 1)
+    row["passed"] = not row["single_date_for_whole_table"] and not int(row["impossible_dates"] or 0)
+    return row
