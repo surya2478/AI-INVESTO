@@ -399,6 +399,32 @@ Indian equities. That is the value-and-size premium in a small-cap bull market �
 the most heavily documented pair of factors in the literature, and not what a
 theme-driven multibagger screener claims to be doing.
 
+### Adding P/E made Valuation worse, and that is the honest reading
+
+Quarterly filings are now backfilled too: 690 companies, 217,331 quarterly PIT
+rows, which supplies `pat_ttm` and therefore P/E — 60% of the Valuation pillar
+and previously absent everywhere.
+
+| | P/B only | With P/E |
+|---|---|---|
+| P/E coverage, 2023–25 | **0%** | **83–88%** |
+| Valuation coverage, 2023–25 | 46–48% | **88–92%** |
+| **Valuation mean IC** | **+0.149** | **+0.088** |
+| Composite mean IC | +0.083 | +0.087 |
+
+Valuation's measured IC fell by a third when its heaviest input arrived. Nothing
+broke: the +0.149 was P/B alone across three dates, and the pillar as DESIGNED —
+P/E at 60%, P/B at 40% — scores +0.088 across four. P/E is the weaker of the two
+in this sample, and it outweighs the better one.
+
+This is worth stating plainly because the temptation runs the other way. More
+data made a number go down, and the number that went down was the more honest
+one. The earlier figure measured a pillar we were not actually running.
+
+Note also what P/E did NOT reach: quarterly history starts 2021 and twelve
+filings back covers roughly 2023 onward, so Valuation is still empty at 2018–2022
+where composite coverage is thinnest. The early dates are unchanged.
+
 ### Read the coverage column before the IC column
 
 Composite coverage runs 26% at 2018 to 68% at 2025. The early dates rank on

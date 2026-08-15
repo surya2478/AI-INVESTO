@@ -61,14 +61,27 @@ def main() -> int:
             # duplicate write -- the documents still get fetched. Skipping the
             # companies that are done is what makes a restart cheap, and this
             # job has been interrupted before.
-            covered = {row[0] for row in con.execute("""
-                SELECT DISTINCT s.ticker
-                  FROM fundamentals_pit f JOIN securities s ON s.security_id = f.security_id
-                 WHERE coalesce(f.is_pit, TRUE) AND f.period_type = 'A'
-            """).fetchall()}
+            #
+            # "Covered" has to mean the period types THIS run would fetch. A
+            # quarterly pass over a universe that already has annual data would
+            # otherwise skip almost everyone and quietly do nothing.
+            wanted = ([("A", args.max_annual)] if args.max_annual > 0 else []) + \
+                     ([("Q", args.max_filings)] if args.max_filings > 0 else [])
+            covered = None
+            for period_type, _ in wanted:
+                have = {row[0] for row in con.execute("""
+                    SELECT DISTINCT s.ticker
+                      FROM fundamentals_pit f
+                      JOIN securities s ON s.security_id = f.security_id
+                     WHERE coalesce(f.is_pit, TRUE) AND f.period_type = ?
+                """, [period_type]).fetchall()}
+                covered = have if covered is None else (covered & have)
+            covered = covered or set()
+
             before = len(symbols)
             symbols = [s for s in symbols if f"{s}.NS" not in covered]
-            log.info("skipping %d already covered", before - len(symbols))
+            log.info("skipping %d already covered for %s", before - len(symbols),
+                     "+".join(p for p, _ in wanted) or "nothing")
 
         if args.limit:
             symbols = symbols[: args.limit]
