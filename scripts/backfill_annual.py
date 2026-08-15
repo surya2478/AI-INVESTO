@@ -45,6 +45,9 @@ def main() -> int:
                         help="quarterly filings per company (0 to skip)")
     parser.add_argument("--chunk", type=int, default=25,
                         help="commit and report every N companies")
+    parser.add_argument("--skip-covered", action="store_true",
+                        help="skip companies that already have annual point-in-time "
+                             "data, so an interrupted run resumes cheaply")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -53,6 +56,20 @@ def main() -> int:
     try:
         tickers = investable_universe(con) if args.all else load_theme_graph().india_universe()
         symbols = [t.removesuffix(".NS") for t in tickers if t.endswith(".NS")]
+        if args.skip_covered:
+            # The inserts are already idempotent, but NOT EXISTS only stops the
+            # duplicate write -- the documents still get fetched. Skipping the
+            # companies that are done is what makes a restart cheap, and this
+            # job has been interrupted before.
+            covered = {row[0] for row in con.execute("""
+                SELECT DISTINCT s.ticker
+                  FROM fundamentals_pit f JOIN securities s ON s.security_id = f.security_id
+                 WHERE coalesce(f.is_pit, TRUE) AND f.period_type = 'A'
+            """).fetchall()}
+            before = len(symbols)
+            symbols = [s for s in symbols if f"{s}.NS" not in covered]
+            log.info("skipping %d already covered", before - len(symbols))
+
         if args.limit:
             symbols = symbols[: args.limit]
 

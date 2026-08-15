@@ -339,6 +339,73 @@ and four observations cannot tell those apart. The composite improvement of
 Pledge remains without a historical source: it is not in the shareholding feed,
 and the pledge endpoint currently returns empty payloads for every symbol.
 
+## The expanded universe — 662 companies, and the answer changes shape
+
+Every result above ran on the 102 theme names, so deciles held about ten
+companies each. Annual XBRL is now backfilled across the whole investable
+universe: **662 companies with annual point-in-time data**, 82,573 facts, and
+`share_count` reaching FY2018 — so historical market cap is computable and
+Discovery and Valuation stop defaulting to neutral in the early years.
+
+Eight rebalance dates, 305 to 662 names, deciles of 30 to 66.
+
+| | Theme universe (97) | Full universe (662) |
+|---|---|---|
+| Rebalance dates | 7 | **8** (from 2018) |
+| Names per date | 69–97 | **305–662** |
+| Mean rank IC | +0.078 | **+0.083** |
+| Top − bottom | 21.3 pts | 20.5 pts |
+
+Per year: −0.02, +0.02, +0.12, −0.05, +0.15, +0.30, +0.10, +0.05. Positive in
+six of eight.
+
+### Which pillars survive a real universe
+
+| Pillar | Weight | Mean IC (97 names) | **Mean IC (662)** | Coverage |
+|---|---|---|---|---|
+| Valuation | 10% | +0.070 | **+0.149** | 46–48%, 2023 on |
+| Discovery | 15% | −0.012 | **+0.133** | 89–100% |
+| Theme | 20% | +0.164 | **+0.066** | **11–15%** |
+| Momentum | 10% | +0.068 | +0.060 | 95–100% |
+| Growth | 25% | −0.012 | −0.008 | 0–85% |
+| Quality | 20% | −0.042 | −0.027 | 0–75% |
+| **Composite** | | +0.078 | **+0.083** | 26–68% |
+
+Three things moved, and each says something different.
+
+**Discovery went from −0.012 to +0.133** — not because the pillar changed but
+because it finally has data. Market cap was missing before FY2023, so the pillar
+was 30% covered and mostly neutral; it is now 89–100% covered. This is the size
+effect, measurable at last.
+
+**Theme collapsed from +0.164 to +0.066** — and that is honest rather than
+disappointing. The theme graph tags 102 of 662 names, so coverage is 11–15% and
+the pillar correctly abstains on the rest. Its earlier strength was measured on a
+universe made entirely of theme members. It has not got worse; it is being asked
+a fair question for the first time.
+
+**Growth and Quality still earn nothing** at 45% of the combined weight, now
+across eight dates and up to 662 names rather than three dates and 95.
+
+### The composite is still worse than its best pillar
+
+Valuation alone scores +0.149 and Discovery +0.133; the composite scores +0.083.
+Weighting six pillars together, four of which are flat or negative, produces
+something worse than either of the two that work. That has now been true in every
+configuration tested.
+
+And note what the two that work are: cheapness and smallness, across 2018–2025 in
+Indian equities. That is the value-and-size premium in a small-cap bull market —
+the most heavily documented pair of factors in the literature, and not what a
+theme-driven multibagger screener claims to be doing.
+
+### Read the coverage column before the IC column
+
+Composite coverage runs 26% at 2018 to 68% at 2025. The early dates rank on
+roughly a quarter evidence and three-quarters neutral default, because cash flow
+starts at FY2022 and the balance sheet at FY2023. The 2018 and 2019 ICs are
+nearly meaningless as tests of the score as designed.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so
