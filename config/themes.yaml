@@ -46,12 +46,14 @@ themes:
           suppliers have order books tied to the domestic DC build.
       - id: in_dc_cooling
         name: "Cooling & thermal management"
+        exposure: 0.25
         tickers: [BLUESTARCO, VOLTAS, AMBER]
         rationale: >
           Liquid and precision cooling is the fastest-growing line item per MW
           as rack densities rise. Indian HVAC names have a nascent DC segment.
       - id: in_it_services_ai
         name: "IT services AI revenue mix"
+        exposure: 0.10
         # LTM = LTIMindtree (NSE ticker changed from LTI post-Mindtree merger)
         tickers: [TCS, INFY, HCLTECH, LTM, LTTS, TECHM, PERSISTENT]
         rationale: >
@@ -337,6 +339,7 @@ themes:
     india_nodes:
       - id: in_quantum_adjacent
         name: "Cryogenics, precision & research services"
+        exposure: 0.05
         tickers: [MTARTECH, DATAPATTNS, TCS, LTTS]
         rationale: >
           Adjacency only -- quantum is a rounding error in each of these
@@ -358,6 +361,7 @@ themes:
     india_nodes:
       - id: in_h2
         name: "Indian hydrogen exposure"
+        exposure: 0.15
         tickers: [LT, THERMAX, JSWENERGY, ADANIGREEN]
         rationale: "Optionality within larger businesses, not pure-play exposure."
 
@@ -376,6 +380,7 @@ themes:
     india_nodes:
       - id: in_nuclear
         name: "Nuclear equipment & fabrication"
+        exposure: 0.15
         tickers: [MTARTECH, WALCHANNAG, LT, NTPC]
         rationale: "Precision fabrication capability; nuclear is a small revenue slice today."
 

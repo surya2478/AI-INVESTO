@@ -274,8 +274,14 @@ def attach_market_data(con, features: pd.DataFrame, as_of: dt.date) -> pd.DataFr
     return out
 
 
-def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None) -> pd.DataFrame:
-    """Compute the six pillars and the composite."""
+def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None,
+          theme_exposure: dict[str, float] | None = None) -> pd.DataFrame:
+    """Compute the six pillars and the composite.
+
+    `theme_exposure` is the share of each company its themes actually drive.
+    Omitted, every theme member is treated as a pure play, which is what the
+    engine did before exposure existed.
+    """
     if frame.empty:
         return frame
 
@@ -338,9 +344,15 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None) -> 
 
     # T — theme tailwind. A company in no tracked theme is not evidence of
     # anything, so it scores neutral and reports zero coverage rather than
-    # claiming a 50 it did not earn.
+    # claiming a 50 it did not earn. Where exposure is known it IS the coverage:
+    # a 5% exposure moves the score 5% of the way from neutral, so a bit-part
+    # player cannot ride a theme like a pure play.
     theme = out["ticker"].map(theme_scores or {})
-    theme_coverage = theme.notna().astype(float)
+    if theme_exposure:
+        theme_coverage = out["ticker"].map(theme_exposure).astype(float).clip(0.0, 1.0)
+        theme_coverage = theme_coverage.where(theme.notna(), 0.0).fillna(0.0)
+    else:
+        theme_coverage = theme.notna().astype(float)
     out["t_score"] = _shrink(theme, theme_coverage)
     out["t_score_coverage"] = theme_coverage * 100.0
     coverages["t_score"] = theme_coverage
@@ -356,13 +368,46 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None) -> 
     return out.sort_values("gem_score", ascending=False)
 
 
-def theme_confluence(con, as_of: dt.date) -> dict[str, float]:
-    """Trend-confluence score of each company's parent theme.
+def blend_theme_exposure(
+    contributions: dict[str, list[tuple[float, float]]],
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Combine the themes a company belongs to into one tailwind and one exposure.
+
+    `contributions` maps ticker to [(theme confluence, exposure to that theme)].
+    The score is the exposure-weighted mean, so being mostly a grid company and
+    marginally a quantum one is not half of each. The exposure is the sum, capped
+    at 1.0: three themes at 0.5 do not make a company 150% exposed to anything.
+    """
+    scores: dict[str, float] = {}
+    exposures: dict[str, float] = {}
+    for ticker, pairs in contributions.items():
+        total = sum(exposure for _, exposure in pairs)
+        if total <= 0:
+            continue
+        scores[ticker] = sum(value * exposure for value, exposure in pairs) / total
+        exposures[ticker] = min(total, 1.0)
+    return scores, exposures
+
+
+def theme_confluence(con, as_of: dt.date) -> tuple[dict[str, float], dict[str, float]]:
+    """Trend-confluence felt by each company, and how exposed it is.
 
     Without this the T pillar is a constant 50 for every company, which means
     20% of the composite weight contributes nothing but still dilutes the
     pillars that do carry signal. The first backtest ran with exactly that
     defect.
+
+    TWO THINGS WERE WRONG WITH THE FIRST FIX. A company in more than one theme
+    took the first theme's score via `setdefault`, so CG Power was scored on
+    AI & Compute and never on Grid Infrastructure purely because of YAML order.
+    And every member of a theme was scored as a pure play, so TCS -- whose own
+    config entry calls quantum "a rounding error in each of these companies'
+    revenue" -- received the same tailwind as a company that does nothing else.
+
+    So: confluence is averaged across a company's themes weighted by exposure,
+    and total exposure is returned separately as the pillar's coverage. A 5%
+    exposure moves the score 5% of the way from neutral, which is the whole
+    point. Returns (score per ticker, exposure per ticker capped at 1.0).
     """
     from engine.features.trends import build_theme_index, confluence_score, trend_metrics
     from engine.universe.theme_graph import load_theme_graph
@@ -373,28 +418,31 @@ def theme_confluence(con, as_of: dt.date) -> dict[str, float]:
          WHERE o.date <= ?
     """, [as_of]).df()
     if prices.empty:
-        return {}
+        return {}, {}
     prices["date"] = pd.to_datetime(prices["date"])
 
     graph = load_theme_graph()
-    out: dict[str, float] = {}
+    contributions: dict[str, list[tuple[float, float]]] = {}
     for theme in graph.themes:
         india = build_theme_index(prices, theme.india_tickers)
         if india.empty:
             continue
         value = confluence_score(trend_metrics(india))
-        for ticker in theme.india_tickers:
-            out.setdefault(ticker, value)
-    return out
+        for ticker, exposure in theme.india_exposures.items():
+            contributions.setdefault(ticker, []).append((value, exposure))
+
+    return blend_theme_exposure(contributions)
 
 
 def score_universe(con, as_of: dt.date | None = None, include_non_pit: bool = True,
-                   theme_scores: dict[str, float] | None = None) -> pd.DataFrame:
+                   theme_scores: dict[str, float] | None = None,
+                   theme_exposure: dict[str, float] | None = None) -> pd.DataFrame:
     as_of = as_of or dt.date.today()
     features = build_features(con, as_of, include_non_pit=include_non_pit)
     if features.empty:
         return features
     enriched = attach_market_data(con, features, as_of)
     if theme_scores is None:
-        theme_scores = theme_confluence(con, as_of)
-    return score(enriched, theme_scores)
+        theme_scores, derived_exposure = theme_confluence(con, as_of)
+        theme_exposure = theme_exposure or derived_exposure
+    return score(enriched, theme_scores, theme_exposure)

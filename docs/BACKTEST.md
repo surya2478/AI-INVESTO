@@ -165,6 +165,48 @@ This is the point of the fix and it is worth stating plainly: renormalisation wa
 necessary to stop the backtest measuring something other than the score, and it
 bought no performance. The composite still does not rank on point-in-time data.
 
+## After theme exposure — the first change that improved anything
+
+Theme membership was a bit, not a degree. `theme_confluence` gave a company the
+FIRST theme it appeared in via `setdefault`, so CG Power was scored on AI &
+Compute and never on Grid Infrastructure purely because of YAML ordering. And
+every member scored as a pure play, so TCS — whose config entry calls quantum
+"a rounding error in each of these companies' revenue" — got the same tailwind as
+a company that does nothing else.
+
+Confluence is now averaged across a company's themes weighted by exposure, and
+total exposure is the pillar's coverage. At 2025-07-01:
+
+| Company | Blended confluence | Exposure | T pillar |
+|---|---|---|---|
+| CG Power | 75.3 | 100% | 75.3 |
+| MTAR | 79.4 | 100% | 79.4 |
+| TCS | 70.2 | 15% | **53.0** |
+| Infosys | 72.8 | 10% | **52.3** |
+| L&T | 53.2 | 30% | 51.0 |
+
+| | Before exposure | After |
+|---|---|---|
+| Theme pillar mean IC | +0.107 | **+0.164** |
+| Composite mean IC | +0.044 | **+0.061** |
+| Top − bottom | 11.1 pts | **23.5 pts** |
+
+The theme pillar is positive in five of seven years and is now the strongest
+pillar in the score.
+
+**Read the caveat before believing the number.** The exposure values are
+hand-authored judgements, written from what config/themes.yaml already said in
+prose — "adjacency only", "optionality within larger businesses, not pure-play
+exposure", "a small revenue slice today" — and set BEFORE any IC was measured.
+They are not segment revenue. Tuning them until the backtest improves is exactly
+the overfitting this document exists to refuse; if they are to be revised it
+should be against reported segment disclosures, not against this table.
+
+**And the composite is still worse than its own best pillar.** Theme alone scores
++0.164; the composite scores +0.061. Quality at −0.160 and Growth at −0.033 are
+subtracting, at 20% and 25% of the weight. Five of the six pillars are not
+earning their place.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so

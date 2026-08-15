@@ -23,6 +23,15 @@ class ThemeNode:
     leg: str                      # GLOBAL | INDIA
     tickers: list[str]
     rationale: str = ""
+    # Share of the company that the theme actually drives, 0-1. Defaults to 1.0,
+    # which is the claim "this is a pure play" -- true for CG Power in the
+    # data-centre power chain and plainly false for TCS in quantum. Set it on
+    # the node where the whole node is an adjacency, or per ticker where members
+    # differ. These are hand-authored judgements, not measured revenue shares.
+    exposures: dict[str, float] = field(default_factory=dict)
+
+    def exposure(self, ticker: str) -> float:
+        return self.exposures.get(ticker, 1.0)
 
 
 @dataclass
@@ -41,6 +50,23 @@ class Theme:
     @property
     def india_tickers(self) -> list[str]:
         return [t for n in self.nodes if n.leg == "INDIA" for t in n.tickers]
+
+    @property
+    def india_exposures(self) -> dict[str, float]:
+        """Exposure to THIS theme per ticker.
+
+        A company can sit in two nodes of one theme -- a transformer maker is in
+        the data-centre power chain and in interconnect -- without being twice
+        as exposed to the theme. So nodes are combined by taking the strongest
+        claim, not by adding them up.
+        """
+        out: dict[str, float] = {}
+        for node in self.nodes:
+            if node.leg != "INDIA":
+                continue
+            for ticker in node.tickers:
+                out[ticker] = max(out.get(ticker, 0.0), node.exposure(ticker))
+        return out
 
 
 @dataclass
@@ -99,6 +125,43 @@ def _yahoo_suffix(ticker: str) -> str:
     return f"{ticker}.NS"
 
 
+def _parse_node_tickers(node: dict, leg: str) -> tuple[list[str], dict[str, float]]:
+    """Ticker list plus per-ticker exposure.
+
+    Two spellings, so existing config keeps working unchanged:
+
+        tickers: [CGPOWER, SIEMENS]                 # pure plays, exposure 1.0
+        exposure: 0.05                              # node-wide default
+        tickers:
+          - TCS
+          - {ticker: LTTS, exposure: 0.15}          # per-ticker override
+    """
+    default = float(node.get("exposure", 1.0))
+    tickers: list[str] = []
+    exposures: dict[str, float] = {}
+
+    for item in node.get("tickers", []) or []:
+        if isinstance(item, dict):
+            raw = item.get("ticker")
+            if not raw:
+                raise ValueError(f"node {node.get('id')}: ticker entry without a ticker")
+            weight = float(item.get("exposure", default))
+        else:
+            raw, weight = item, default
+
+        if not 0.0 < weight <= 1.0:
+            raise ValueError(
+                f"node {node.get('id')}: exposure for {raw} is {weight}; "
+                "it is a share of the company and must be in (0, 1]"
+            )
+
+        ticker = _yahoo_suffix(raw) if leg == "INDIA" else raw
+        tickers.append(ticker)
+        exposures[ticker] = weight
+
+    return tickers, exposures
+
+
 def load_theme_graph(path=None) -> ThemeGraph:
     """Parse config/themes.yaml into a ThemeGraph."""
     path = path or settings.THEMES_FILE
@@ -109,10 +172,7 @@ def load_theme_graph(path=None) -> ThemeGraph:
         nodes: list[ThemeNode] = []
         for leg, key in (("GLOBAL", "global_nodes"), ("INDIA", "india_nodes")):
             for node in entry.get(key, []) or []:
-                tickers = [
-                    _yahoo_suffix(t) if leg == "INDIA" else t
-                    for t in node.get("tickers", [])
-                ]
+                tickers, exposures = _parse_node_tickers(node, leg)
                 nodes.append(
                     ThemeNode(
                         node_id=node["id"],
@@ -120,6 +180,7 @@ def load_theme_graph(path=None) -> ThemeGraph:
                         leg=leg,
                         tickers=tickers,
                         rationale=(node.get("rationale") or "").strip(),
+                        exposures=exposures,
                     )
                 )
         themes.append(
