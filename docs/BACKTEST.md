@@ -74,16 +74,73 @@ So the honest reading is not "the score works." It is: *a small-cap tilt beat a
 market in which small caps ran, and the parts of the score that are supposed to
 be doing the work were not doing it.*
 
+## The PIT-only run — 15 Aug 2026, after annual XBRL ingestion
+
+Annual point-in-time fundamentals now exist: 51,026 facts for 101 companies,
+FY2018–FY2024, every one carrying the filing date NSE recorded. So
+`harness.run(include_non_pit=False)` runs for the first time. Seven rebalance
+dates, 2019–2025, 69–97 names.
+
+| | Restated (Yahoo) | Point-in-time |
+|---|---|---|
+| Rebalance dates | 3 | 7 |
+| Names per date | 676–760 | 69–97 |
+| Mean rank IC | +0.167 | **+0.037** |
+| Yearly IC | +0.33, +0.12, +0.06 | +0.09, +0.01, **−0.22**, +0.00, **+0.42**, +0.07, **−0.12** |
+| Top − bottom | +43.3 pts | +11.0 pts |
+| Deciles monotonic | yes | **no** |
+
+**On point-in-time data the score shows no skill.** Mean IC +0.037 is
+indistinguishable from zero, the sign flips in three of seven years, and the
+whole mean rests on 2023 (+0.42) — the smallcap melt-up year. The decile ladder
+is not monotonic: the bottom decile (60.3%) beats deciles 3 through 8.
+
+Two things make even that flattering. The universe is 97 theme names rather than
+760, so it is narrow, pre-selected and thematically correlated, with a mean
+return of 54.4% a year. And the deciles hold about ten names each.
+
+## What the PIT run actually exposed: the score cannot consume partial data
+
+This matters more than the IC. Pillars do not go missing when their inputs go
+missing — they silently collapse to whichever component still has data, at a
+fraction of their intended scale, and enter the composite as though nothing
+happened. `gem.score` sums weighted components with `min_count=1` and never
+renormalises to available weight.
+
+At 2019-07-01, across 69 companies:
+
+| Pillar | Inputs present | What it actually was | Range |
+|---|---|---|---|
+| Quality | 0 of 5 | pledge% defaulted to zero for everyone | **constant 2.5** |
+| Discovery | turnover only | turnover rank at 30% of scale | 0.4–30.0 |
+| Valuation | none | correctly NaN | — |
+
+A real pillar spans ~100. Quality was a **constant**, carrying no information at
+20% of the composite weight, and Discovery carried turnover at 30% strength with
+size — 70% of it — silently absent. The 2019–2022 dates are therefore not
+measuring the score described in the spec; they are measuring growth, momentum
+and theme with two stubs attached.
+
+Even 2023 is not clean: `cash_conversion` — the heaviest input in Quality, and
+the one the module calls hardest to manufacture — is absent for all 95 names,
+because it needs three years of annual cash flow and point-in-time CFO only
+begins at FY2022.
+
+**So the blocker is no longer data.** It is that the scoring code has no concept
+of coverage. Available-weight renormalisation, shrinkage toward 50 in proportion
+to missingness, and a visible coverage score have to land before another
+backtest number is worth reading.
+
 ## Biases — every number above still overstates the score's skill
 
-1. **Restatement in place.** Yahoo reports current values, so a 2023 ranking may
-   use figures revised in 2025. `harness.run(include_non_pit=False)` is the
-   switch that excludes them, and it is **not yet usable**: the true
-   point-in-time corpus (NSE XBRL, parsed PDFs) is 39 securities and
-   **quarterly only**, while the pillars rank on annual periods, so a PIT-only
-   run returns nothing at all. Annual PIT ingestion is the prerequisite for a
-   result that means anything. The run mode now travels with the result as
-   `pit_only`.
+1. **Restatement in place** (restated run only). Yahoo reports current values, so
+   a 2023 ranking may use figures revised in 2025. The PIT-only run above
+   excludes those rows; the run mode travels with the result as `pit_only`.
+   The point-in-time corpus has its own ceiling, measured rather than assumed:
+   annual XBRL exists from about FY2018 and carries the P&L throughout, but the
+   balance sheet and cash-flow statement only from FY2023. Seven years of
+   growth history; two of quality. Testing the quality pillar still needs a paid
+   vendor.
 2. **Survivorship.** The universe is today's NIFTY TOTAL MARKET; companies that
    failed and delisted are absent. Their absence lifts the bottom decile most,
    so the true spread is probably wider and the true bottom-decile return worse.
