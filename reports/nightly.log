@@ -1,0 +1,13 @@
+AI-Investo nightly run — 2026-08-15 21:45:49
+==============================================================
+[ok  ] universe                  7.2s  2126 listings, 6 indices, 139 index levels, 156 ASM flags, 2 flow rows
+[ok  ] bse identity              3.7s  2027 securities matched to BSE scrip codes
+[ok  ] prices                   75.2s  8,669 bars from 2026-08-03 across 868 symbols
+[ok  ] filings recent          711.0s  2923 announcements 2026-07-27..2026-08-14, 1524 without a parseable period
+[ok  ] filings backfill        581.2s  3515 announcements, cursor now 2026-06-18, ~34 windows to 2024-10-01
+[FAIL] trends                    0.1s  ConnectionException: Connection Error: Can't open a connection to same database file with a different configuration than existing connection
+[ok  ] gates                    91.0s  210 rejected, 208 flagged, 51 unvetted, 293 cleared
+[FAIL] thesis health             0.1s  ConnectionException: Connection Error: Can't open a connection to same database file with a different configuration than existing connection
+==============================================================
+6/8 stages ok — FAILED: trends, thesis health
+

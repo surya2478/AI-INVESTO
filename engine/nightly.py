@@ -245,7 +245,11 @@ def stage_payload(con) -> str:
 
     from engine import demo_data
 
-    payload = demo_data.build()
+    # Lend the night's own connection. Opening a read-only one here raises
+    # "Can't open a connection to same database file with a different
+    # configuration" -- DuckDB will not mix configurations within a process --
+    # which is why this stage had never once succeeded inside the nightly job.
+    payload = demo_data.build(con)
     settings.REPORT_DIR.mkdir(parents=True, exist_ok=True)
     (settings.REPORT_DIR / "today.json").write_text(
         json.dumps(payload, indent=2, default=str), encoding="utf-8"
@@ -266,7 +270,9 @@ def stage_thesis_health(con) -> str:
 
     folio = book.connect()
     try:
-        health = book.review_thesis(folio)
+        # Lend the night's analytics connection; opening a read-only one inside
+        # this process is what made this stage fail every night.
+        health = book.review_thesis(folio, analytics_con=con)
         if health.empty:
             return "no open positions"
         counts = health["health"].value_counts().to_dict()

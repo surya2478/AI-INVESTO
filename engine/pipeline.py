@@ -740,10 +740,10 @@ def score() -> None:
                           f"{sub.g_score.mean():.0f}", f"{sub.q_score.mean():.0f}",
                           f"{sub.t_score.mean():.0f}", f"{sub.m_score.mean():.0f}")
         console.print(table)
-        console.print(f"[green]{len(staged):,} companies scored[/green] as of {as_of}")
+        console.print(f"[green]{len(frame):,} companies scored[/green] as of {as_of}")
         console.print("[dim]Bands group; they do not rank. See docs/BACKTEST.md.[/dim]")
 
-        db.log_ingest(con, run_id, "score", None, "OK", len(staged), None, started)
+        db.log_ingest(con, run_id, "score", None, "OK", len(frame), None, started)
     finally:
         con.close()
 

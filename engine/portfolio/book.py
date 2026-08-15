@@ -174,12 +174,18 @@ def _latest_prices(tickers: list[str], analytics_db: Path | None = None) -> dict
 
 
 # -------------------------------------------------------------- thesis health
-def review_thesis(con, as_of: dt.date | None = None) -> pd.DataFrame:
+def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.DataFrame:
     """Score each open position GREEN / AMBER / RED against current evidence.
 
     Exits are thesis-driven, so nothing here looks at price. A holding that has
     halved with every gate still passing is not a sell signal; one that is up
     with cash conversion newly failing is.
+
+    `analytics_con` lets a caller lend its own analytics connection. DuckDB will
+    not open a second connection to a file with a different configuration inside
+    one process, so opening a read-only one here while the nightly job holds a
+    write connection raises -- which is why this stage had never once succeeded
+    in the night, leaving thesis health to whatever last ran it by hand.
     """
     from engine.storage import db as analytics
 
@@ -190,7 +196,8 @@ def review_thesis(con, as_of: dt.date | None = None) -> pd.DataFrame:
     if positions.empty:
         return positions
 
-    acon = analytics.connect(read_only=True)
+    owns_analytics = analytics_con is None
+    acon = analytics_con if analytics_con is not None else analytics.connect(read_only=True)
     try:
         gates = acon.execute("""
             SELECT s.ticker, g.gate_name, g.status, g.detail
@@ -203,7 +210,8 @@ def review_thesis(con, as_of: dt.date | None = None) -> pd.DataFrame:
              WHERE sc.as_of_date = (SELECT max(as_of_date) FROM scores)
         """).df()
     finally:
-        acon.close()
+        if owns_analytics:
+            acon.close()
 
     band_of = dict(zip(bands.get("ticker", []), bands.get("band", [])))
     rows = []

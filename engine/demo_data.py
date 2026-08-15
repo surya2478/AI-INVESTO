@@ -29,16 +29,27 @@ from engine.universe.theme_graph import load_theme_graph
 CLEARED_THEME_LIMIT = 60
 
 
-def build() -> dict:
+def build(con=None) -> dict:
+    """Assemble the Today payload.
+
+    `con` lets a caller that already holds a connection lend it. DuckDB refuses
+    a second connection to the same file with a different configuration inside
+    one process, so opening a read-only one here while the nightly job holds a
+    write connection raises -- which is exactly what happened every time the
+    night tried to build this, and why the payload has only ever been produced
+    by running this module standalone.
+    """
     graph = load_theme_graph()
-    con = db.connect(read_only=True)
+    owned = con is None
+    connection = con if con is not None else db.connect(read_only=True)
     try:
-        prices = con.execute("""
+        prices = connection.execute("""
             SELECT s.ticker, o.date, o.adj_close AS close, o.volume
               FROM ohlcv o JOIN securities s ON s.security_id = o.security_id
         """).df()
     finally:
-        con.close()
+        if owned:
+            connection.close()
 
     prices["date"] = pd.to_datetime(prices["date"])
     as_of = prices["date"].max()
@@ -110,7 +121,7 @@ def build() -> dict:
         "securities": int(prices.ticker.nunique()),
         "pulse": pulse,
         "themes": themes,
-        "gates": gate_payload(),
+        "gates": gate_payload(con),
     }
 
 
@@ -184,9 +195,14 @@ def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
     return out
 
 
-def gate_payload() -> dict:
-    """Latest gate verdicts, if they have been computed."""
-    con = db.connect(read_only=True)
+def gate_payload(con=None) -> dict:
+    """Latest gate verdicts, if they have been computed.
+
+    `con` is lent by `build` so the whole payload uses one connection; see the
+    note there on why opening a second one inside the nightly job fails.
+    """
+    owned = con is None
+    con = con if con is not None else db.connect(read_only=True)
     try:
         as_of = con.execute("SELECT max(as_of_date) FROM gate_results").fetchone()[0]
         if as_of is None:
@@ -301,7 +317,8 @@ def gate_payload() -> dict:
             "rejected_total": int(rejected.ticker.nunique()),
         }
     finally:
-        con.close()
+        if owned:
+            con.close()
 
 
 if __name__ == "__main__":

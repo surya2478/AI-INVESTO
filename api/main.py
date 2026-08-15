@@ -45,7 +45,13 @@ def health() -> dict:
     con = db.connect(read_only=True)
     try:
         bars, last = con.execute("SELECT count(*), max(date) FROM ohlcv").fetchone()
-        scored = con.execute("SELECT count(*) FROM scores").fetchone()[0]
+        # Companies in the newest run, not rows in the table. `scores` keeps
+        # history, so counting all of it reported 1,520 "scored" for a universe
+        # of 760 the first time the job ran twice.
+        scored = con.execute("""
+            SELECT count(*) FROM scores
+             WHERE as_of_date = (SELECT max(as_of_date) FROM scores)
+        """).fetchone()[0]
     finally:
         con.close()
     return {"status": "ok", "bars": int(bars), "latest_bar": str(last),
