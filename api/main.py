@@ -32,7 +32,7 @@ PWA_DIR = Path(__file__).resolve().parent.parent / "app" / "pwa"
 
 def _read(sql: str, params: list | None = None) -> list[dict]:
     """Run a query on a read-only connection and return plain records."""
-    con = db.connect(read_only=True)
+    con = db.connect_for_reading()
     try:
         frame = con.execute(sql, params or []).df()
     finally:
@@ -42,7 +42,7 @@ def _read(sql: str, params: list | None = None) -> list[dict]:
 
 @app.get("/api/health")
 def health() -> dict:
-    con = db.connect(read_only=True)
+    con = db.connect_for_reading()
     try:
         bars, last = con.execute("SELECT count(*), max(date) FROM ohlcv").fetchone()
         # Companies in the newest run, not rows in the table. `scores` keeps
@@ -162,7 +162,7 @@ def company(ticker: str) -> dict:
     from engine.features import security_trend
     from engine.orders import company_orders
 
-    con = db.connect(read_only=True)
+    con = db.connect_for_reading()
     try:
         trend = security_trend.for_company(con, symbol)
         orders = company_orders(con, symbol)
@@ -201,18 +201,41 @@ def folio() -> dict:
             return {"positions": [], "xray": {"positions": 0}, "plan": [],
                     "note": "No positions yet. Open one with `investo folio open`."}
 
+        # Latest review PER POSITION, and its date. A global max returns only
+        # rows from the newest review run, so a position last looked at months
+        # ago vanishes from the join and renders with no health at all -- the
+        # same defect the deployment gate had, where it read as permission.
         health = con.execute("""
-            SELECT position_id, health, reasons FROM thesis_health
-             WHERE as_of_date = (SELECT max(as_of_date) FROM thesis_health)
+            SELECT position_id, health, reasons, as_of_date AS health_as_of
+              FROM (
+                SELECT position_id, health, reasons, as_of_date,
+                       row_number() OVER (PARTITION BY position_id
+                                          ORDER BY as_of_date DESC) AS rn
+                  FROM thesis_health
+              ) WHERE rn = 1
         """).df()
         merged = held.merge(health, on="position_id", how="left")
 
+        # How old the verdict is, so the screen can say so. A thesis reviewed
+        # six months ago is not a thesis that passed today.
+        age = (pd.Timestamp(dt.date.today()) - pd.to_datetime(merged["health_as_of"])).dt.days
+        merged["health_age_days"] = age
+        merged["health_stale"] = ~age.between(0, book.HEALTH_MAX_AGE_DAYS)
+
+        # Dates as ISO strings, not pandas' epoch default -- the screen prints
+        # these, and "1786752000" is not a date anyone can read.
+        for column in ("health_as_of", "opened_on"):
+            merged[column] = (pd.to_datetime(merged[column])
+                              .dt.strftime("%Y-%m-%d").where(merged[column].notna()))
+
         positions = json.loads(
             merged[["ticker", "tier", "theme", "cost", "value", "pnl_pct",
-                    "weight_pct", "next_stage", "health", "reasons", "thesis"]]
+                    "weight_pct", "next_stage", "health", "reasons", "thesis",
+                    "opened_on", "health_as_of", "health_age_days", "health_stale"]]
             .to_json(orient="records")
         )
         return {"positions": positions, "xray": book.xray(con),
+                "health_max_age_days": book.HEALTH_MAX_AGE_DAYS,
                 "disclaimer": "Your record, not advice."}
     finally:
         con.close()

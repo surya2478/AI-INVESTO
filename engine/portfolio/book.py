@@ -158,7 +158,9 @@ def _latest_prices(tickers: list[str], analytics_db: Path | None = None) -> dict
 
     if not tickers:
         return {}
-    con = analytics.connect(read_only=True)
+    # The serving snapshot: this runs inside API requests, and opening the live
+    # database here means the folio screen dies whenever the pipeline writes.
+    con = analytics.connect_for_reading()
     try:
         placeholders = ",".join("?" * len(tickers))
         frame = con.execute(f"""

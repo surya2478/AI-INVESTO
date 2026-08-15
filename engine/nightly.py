@@ -294,6 +294,19 @@ def stage_gates(con) -> str:
             f"{counts.get('UNVETTED', 0)} unvetted, {counts.get('CLEARED', 0)} cleared")
 
 
+def stage_snapshot(con) -> str:
+    """Publish the copy the app reads, last, once the night is consistent.
+
+    Until this existed the API read the live database, so every data endpoint
+    returned 500 for the whole run -- twenty minutes to an hour of the app being
+    down each night, which is exactly when nobody is watching it.
+    """
+    path = db.publish_snapshot()
+    if path is None:
+        return "no snapshot published"
+    return f"{path.name}, {path.stat().st_size / 1e6:.0f} MB"
+
+
 # ----------------------------------------------------------------- entrypoint
 def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
     report = NightlyReport(started=dt.datetime.now())
@@ -315,6 +328,7 @@ def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
         _stage(report, "score", lambda: stage_score(con))
         _stage(report, "thesis health", lambda: stage_thesis_health(con))
         _stage(report, "today payload", lambda: stage_payload(con))
+        _stage(report, "publish snapshot", lambda: stage_snapshot(con))
     finally:
         con.close()
 

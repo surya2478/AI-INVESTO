@@ -9,12 +9,17 @@ Every historical read goes through here so that rule lives in exactly one place.
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import os
+import shutil
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from engine.config import settings
+
+log = logging.getLogger(__name__)
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -31,6 +36,58 @@ def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
             f"No database at {settings.DB_PATH}. Run `investo init` first."
         )
     return con
+
+
+def publish_snapshot() -> Path | None:
+    """Copy the analytics database to the file readers serve from.
+
+    DuckDB gives a writer an EXCLUSIVE lock on the file, so while the nightly
+    job runs, every read-only connection fails outright -- the API returns 500
+    on every data endpoint for the duration, which is twenty minutes to an hour.
+    That is not a race to be retried around; it is the storage engine working as
+    designed.
+
+    So writers own `investo.duckdb` and readers own a copy of it. The copy is
+    replaced atomically at the end of a run, which is the only moment the file
+    is consistent anyway: a reader either sees the whole previous snapshot or
+    the whole new one, never a half-written night.
+
+    Returns the snapshot path, or None if the replace could not complete because
+    a reader still had it open -- in which case the previous snapshot stays in
+    place and is served instead. Stale is recoverable; a locked database is not.
+    """
+    source = settings.DB_PATH
+    if not source.exists():
+        return None
+
+    target = settings.SERVE_DB_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = target.with_suffix(".tmp")
+
+    shutil.copy2(source, staging)
+    try:
+        os.replace(staging, target)
+    except OSError as exc:
+        # Windows refuses to replace a file another process holds open. Keep the
+        # snapshot that is already there rather than leaving readers with none.
+        log.warning("snapshot in use, keeping the previous one: %s", exc)
+        staging.unlink(missing_ok=True)
+        return target if target.exists() else None
+    return target
+
+
+def connect_for_reading() -> duckdb.DuckDBPyConnection:
+    """Open the serving snapshot, falling back to the live database.
+
+    Every read path that a person waits on should use this. The fallback keeps a
+    fresh install working before any snapshot exists, at the cost of being
+    blocked while a write runs -- which is exactly the behaviour the snapshot
+    exists to remove, so it is a starting condition, not a steady state.
+    """
+    snapshot = settings.SERVE_DB_PATH
+    if snapshot.exists():
+        return duckdb.connect(str(snapshot), read_only=True)
+    return connect(read_only=True)
 
 
 def init_db() -> Path:

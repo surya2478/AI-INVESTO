@@ -77,6 +77,13 @@ class Settings:
         return self.DATA_DIR / "db" / "investo.duckdb"
 
     @property
+    def SERVE_DB_PATH(self) -> Path:
+        """The copy readers open. DuckDB locks the live file exclusively while
+        a write runs, so serving from it means the app dies for the length of
+        the nightly job. Published by `db.publish_snapshot` at the end of a run."""
+        return self.DATA_DIR / "db" / "investo_serve.duckdb"
+
+    @property
     def RAW_DIR(self) -> Path:
         return self.DATA_DIR / "raw"
 

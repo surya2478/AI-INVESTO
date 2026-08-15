@@ -419,13 +419,24 @@ function loadFolio() {
       pos.map(p => `
         <div class="card tap" data-ticker="${p.ticker}" style="border-left:2px solid ${tone[p.health] || "var(--line)"}">
           <div class="bh"><b>${p.ticker.replace(".NS","")} ›</b>
-            <span style="color:${tone[p.health] || "var(--muted)"}">${p.health || "?"}</span></div>
+            <span style="color:${p.health_as_of == null || p.health_stale ? "var(--warn)" : (tone[p.health] || "var(--muted)")}">${
+              p.health_as_of == null ? "NOT REVIEWED" : (p.health || "?")}</span></div>
           <div class="bs">${p.tier} · ${p.theme || "no theme"} ·
             ${p.value ? "₹" + Math.round(p.value).toLocaleString("en-IN") : "not bought yet"}
             ${p.pnl_pct != null ? " · " + signed(p.pnl_pct) + "%" : ""}
             ${p.next_stage != null ? " · next stage " + p.next_stage : " · ladder complete"}</div>
           ${p.reasons ? `<p style="margin-top:8px;font-size:11.5px;color:${tone[p.health]}">${p.reasons}</p>` : ""}
+          <!-- The thesis is what you believed WHEN YOU BOUGHT. Dating it is the
+               whole point: WABAG's says "cleared all gates" while the evidence
+               above it reports a 47.8% promoter pledge, and without a date the
+               two read as equally current. -->
           <p style="margin-top:8px;font-size:11.5px;color:var(--muted)">${p.thesis || ""}</p>
+          <div class="bs" style="margin-top:6px;color:${p.health_as_of == null || p.health_stale ? "var(--warn)" : "var(--muted)"}">
+            ${p.opened_on ? "thesis written " + String(p.opened_on).slice(0,10) : ""}
+            ${p.health_as_of == null
+              ? " · never reviewed"
+              : " · health checked " + String(p.health_as_of).slice(0,10) +
+                (p.health_stale ? ` (${p.health_age_days}d old — too stale to fund)` : "")}</div>
         </div>`).join("") + `
       <div class="card"><div class="tag">Concentration</div>
         <div class="bs" style="margin-top:6px">${

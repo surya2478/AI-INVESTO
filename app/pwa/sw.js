@@ -6,7 +6,10 @@
  * the response with its age so you can see what you are looking at.
  */
 const SHELL = "investo-shell-v1";
-const DATA = "investo-data-v1";
+// v2 deliberately abandons v1: it may hold API errors cached as though they were
+// data, and there is no way to tell which entries those are after the fact.
+// `activate` deletes every cache it does not recognise, so the bump purges them.
+const DATA = "investo-data-v2";
 const SHELL_FILES = ["/", "/index.html", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -36,8 +39,15 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(DATA).then((c) => c.put(request, copy));
+          // ONLY CACHE SUCCESSES. A 500 is a valid HTTP response, so `fetch`
+          // resolves and the old code stored it — then served it from cache on
+          // the next failure, presenting a server error as offline data that
+          // never expired. The nightly job holding the database lock is enough
+          // to produce one, so this was not a rare path.
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(DATA).then((c) => c.put(request, copy));
+          }
           return response;
         })
         .catch(() => caches.match(request).then(
