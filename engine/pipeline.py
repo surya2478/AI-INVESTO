@@ -725,39 +725,9 @@ def score() -> None:
             console.print("[yellow]nothing to score[/yellow]")
             return
 
-        # Band, not rank: thirds of the scored universe.
-        frame = frame.copy()
-        frame["band"] = pd.qcut(frame["gem_score"].rank(method="first"), 3,
-                                labels=["LOWER", "MIDDLE", "UPPER"])
-
-        staged = pd.DataFrame({
-            "security_id": frame["security_id"],
-            "as_of_date": as_of,
-            "theme_id": None,
-            "t_score": frame["t_score"], "g_score": frame["g_score"],
-            "q_score": frame["q_score"], "d_score": frame["d_score"],
-            "v_score": frame["v_score"], "m_score": frame["m_score"],
-            "gem_score": frame["gem_score"],
-            "coverage": frame["coverage"],
-            "rank_overall": frame["gem_score"].rank(ascending=False).astype(int),
-            "gates_passed": None, "gates_failed": None,
-            # `explain` is a JSON column; a bare string is rejected.
-            "explain": frame["band"].astype(str).map(lambda b: f'{{"band":"{b}"}}'),
-        })
-
-        con.register("staged_scores", staged)
-        con.execute("DELETE FROM scores WHERE as_of_date = ?", [as_of])
-        con.execute("""
-            INSERT INTO scores (security_id, as_of_date, theme_id, t_score, g_score,
-                                q_score, d_score, v_score, m_score, gem_score,
-                                coverage, rank_overall, gates_passed, gates_failed,
-                                explain)
-            SELECT security_id, as_of_date, theme_id, t_score, g_score, q_score,
-                   d_score, v_score, m_score, gem_score, coverage, rank_overall,
-                   gates_passed, gates_failed, explain
-              FROM staged_scores
-        """)
-        con.unregister("staged_scores")
+        # Band, not rank: thirds of the scored universe. Shared with the nightly
+        # job so the column list lives in one place.
+        frame = gem.store_scores(con, frame, as_of)
 
         table = Table(title="Pillar averages by band")
         table.add_column("band", style="cyan")

@@ -214,8 +214,33 @@ def stage_filings_backfill(con, windows: int) -> str:
             f"~{remaining} windows to {BACKFILL_FLOOR}")
 
 
-def stage_trends(con) -> str:
-    """Recompute theme indices, divergence and the Today payload."""
+def stage_score(con) -> str:
+    """Score the universe into `scores`, which the bands and payload read.
+
+    Scoring was never part of the night, so `scores` only moved when someone ran
+    `investo score` by hand -- and the band display, which reads that table,
+    could sit weeks behind the gate verdicts printed beside it.
+    """
+    from engine.scoring import gem
+
+    as_of = dt.date.today()
+    frame = gem.score_universe(con, as_of=as_of, include_non_pit=True)
+    if frame.empty:
+        return "nothing to score"
+
+    stored = gem.store_scores(con, frame, as_of)
+    return f"{len(stored)} scored, mean coverage {stored['coverage'].mean():.0f}%"
+
+
+def stage_payload(con) -> str:
+    """Recompute theme indices, divergence and the Today payload.
+
+    RUNS LAST, and the order is the point. This stage used to sit before the
+    gates, so the payload the app serves was assembled from the PREVIOUS night's
+    verdicts -- every screening figure on the Today and Screen tabs was one run
+    stale by construction, while looking current. It reads gate_results and
+    scores, so it has to follow both.
+    """
     import json
 
     from engine import demo_data
@@ -276,9 +301,14 @@ def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
             _stage(report, "prices", lambda: stage_prices(con))
         _stage(report, "filings recent", lambda: stage_filings_recent(con))
         _stage(report, "filings backfill", lambda: stage_filings_backfill(con, windows))
-        _stage(report, "trends", lambda: stage_trends(con))
+        # Order matters from here down: gates and scores are inputs to both the
+        # thesis review and the payload, so anything that READS them has to run
+        # after they are written. The payload build used to sit above the gates,
+        # which is how the app came to serve last night's verdicts as today's.
         _stage(report, "gates", lambda: stage_gates(con))
+        _stage(report, "score", lambda: stage_score(con))
         _stage(report, "thesis health", lambda: stage_thesis_health(con))
+        _stage(report, "today payload", lambda: stage_payload(con))
     finally:
         con.close()
 

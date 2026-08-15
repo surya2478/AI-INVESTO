@@ -527,6 +527,51 @@ def theme_confluence(con, as_of: dt.date) -> tuple[dict[str, float], dict[str, f
     return blend_theme_exposure(contributions)
 
 
+def store_scores(con, frame: pd.DataFrame, as_of: dt.date) -> pd.DataFrame:
+    """Write a scored frame to `scores`, banded into thirds. Returns what was staged.
+
+    Shared by the CLI and the nightly job. It existed only in the CLI when
+    scoring was something a human ran, and duplicating it for the night would
+    have meant two places to keep a column list in step.
+
+    Bands, not ranks -- see `demo_data.band_payload` for why the distinction is
+    load-bearing rather than cosmetic.
+    """
+    frame = frame.copy()
+    frame["band"] = pd.qcut(frame["gem_score"].rank(method="first"), 3,
+                            labels=["LOWER", "MIDDLE", "UPPER"])
+
+    staged = pd.DataFrame({
+        "security_id": frame["security_id"],
+        "as_of_date": as_of,
+        "theme_id": None,
+        "t_score": frame["t_score"], "g_score": frame["g_score"],
+        "q_score": frame["q_score"], "d_score": frame["d_score"],
+        "v_score": frame["v_score"], "m_score": frame["m_score"],
+        "gem_score": frame["gem_score"],
+        "coverage": frame["coverage"],
+        "rank_overall": frame["gem_score"].rank(ascending=False).astype(int),
+        "gates_passed": None, "gates_failed": None,
+        # `explain` is a JSON column; a bare string is rejected.
+        "explain": frame["band"].astype(str).map(lambda b: f'{{"band":"{b}"}}'),
+    })
+
+    con.register("staged_scores", staged)
+    con.execute("DELETE FROM scores WHERE as_of_date = ?", [as_of])
+    con.execute("""
+        INSERT INTO scores (security_id, as_of_date, theme_id, t_score, g_score,
+                            q_score, d_score, v_score, m_score, gem_score,
+                            coverage, rank_overall, gates_passed, gates_failed,
+                            explain)
+        SELECT security_id, as_of_date, theme_id, t_score, g_score, q_score,
+               d_score, v_score, m_score, gem_score, coverage, rank_overall,
+               gates_passed, gates_failed, explain
+          FROM staged_scores
+    """)
+    con.unregister("staged_scores")
+    return frame
+
+
 def score_universe(con, as_of: dt.date | None = None, include_non_pit: bool = True,
                    theme_scores: dict[str, float] | None = None,
                    theme_exposure: dict[str, float] | None = None) -> pd.DataFrame:
