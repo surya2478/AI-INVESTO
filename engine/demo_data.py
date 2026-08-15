@@ -113,10 +113,16 @@ def build() -> dict:
 def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
     """Cleared theme companies grouped into score bands.
 
-    Bands, not ranks. The backtest found the composite does not order companies
-    reliably (mean rank IC -0.078, bottom decile beating top), so within a band
-    names are listed by size and no claim is made that one is better than
-    another. See docs/BACKTEST.md.
+    Bands, not ranks, and the reason changed on 15-Aug-2026 without the
+    conclusion changing. The first backtest showed the composite ordering
+    companies backwards (mean rank IC -0.078); that turned out to be a
+    look-ahead leak in the market cap, and the corrected run ranks monotonically
+    at +0.167. But the corrected composite's IC is exactly its size pillar's IC,
+    over three years in which small caps ran, while Growth and Quality -- 45% of
+    the weight -- contributed nothing. So the ordering that exists is a size
+    tilt, not the claim the score is making. Within a band, names are listed by
+    size and no claim is made that one is better than another.
+    See docs/BACKTEST.md.
     """
     scored = con.execute("""
         SELECT s.ticker, sc.gem_score, sc.g_score, sc.q_score, sc.m_score,

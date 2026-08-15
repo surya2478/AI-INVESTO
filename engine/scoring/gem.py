@@ -128,13 +128,49 @@ def build_features(con, as_of: dt.date, include_non_pit: bool = True) -> pd.Data
     return features
 
 
+def shares_outstanding_asof(con, as_of: dt.date) -> pd.DataFrame:
+    """Share count visible on `as_of`, newest published period wins.
+
+    Same discipline as `fundamentals_asof`: `filing_date <= as_of` excludes
+    counts not yet published, and the newest filing wins per period so a later
+    revision supersedes without leaking backwards.
+    """
+    return con.execute("""
+        WITH visible AS (
+            SELECT security_id, value,
+                   row_number() OVER (
+                       PARTITION BY security_id
+                       ORDER BY period_end DESC, filing_date DESC
+                   ) AS rn
+              FROM fundamentals_pit
+             WHERE metric = 'share_count' AND value > 0 AND filing_date <= ?
+        )
+        SELECT security_id, value AS share_count FROM visible WHERE rn = 1
+    """, [as_of]).df()
+
+
 def attach_market_data(con, features: pd.DataFrame, as_of: dt.date) -> pd.DataFrame:
-    """Market cap, liquidity, ownership and price trend."""
+    """Market cap, liquidity, ownership and price trend.
+
+    MARKET CAP IS RECONSTRUCTED, NOT READ. `securities.market_cap` holds today's
+    value, and using it at a historical date does not merely add noise -- it
+    feeds tomorrow's price into yesterday's ranking, with the sign reversed.
+    A company that went on to triple carries a large cap now, so it would rank
+    as big (low D, which rewards small) and as expensive (low V, since the
+    numerator is a price the market had not yet paid). Between them D and V
+    carry 20.5% of the composite, so a fifth of the score would be an inverted
+    copy of the answer. The first backtest ran with exactly that defect and its
+    negative result says nothing about the score.
+
+    So: last close on or before `as_of`, times the share count published by then.
+    Both halves are point-in-time. Reconstructed caps match the stored figure to
+    within a few tenths of a percent on current data.
+    """
     if features.empty:
         return features
 
     profile = con.execute("""
-        SELECT security_id, ticker, coalesce(industry,'') AS industry, market_cap
+        SELECT security_id, ticker, coalesce(industry,'') AS industry
           FROM securities
     """).df()
 
@@ -168,7 +204,18 @@ def attach_market_data(con, features: pd.DataFrame, as_of: dt.date) -> pd.DataFr
            .merge(profile, on="security_id", how="left")
            .merge(liquidity, on="security_id", how="left")
            .merge(momentum, on="security_id", how="left")
-           .merge(ownership, on="security_id", how="left"))
+           .merge(ownership, on="security_id", how="left")
+           .merge(shares_outstanding_asof(con, as_of), on="security_id", how="left"))
+
+    # px_now is already the last close on or before as_of, so the cap is dated
+    # the same day as the ranking. No fallback to the stored figure: a name
+    # without a published share count scores NaN on the pillars that need a cap,
+    # which is the honest answer. Silently substituting today's cap is the bug.
+    out["market_cap"] = out["px_now"] * out["share_count"]
+    missing = int(out["market_cap"].isna().sum())
+    if missing:
+        log.info("%s: no point-in-time market cap for %d of %d names",
+                 as_of, missing, len(out))
 
     out["mom_3m"] = (out["px_now"] / out["px_3m"] - 1) * 100
     out["mom_12m"] = (out["px_now"] / out["px_12m"] - 1) * 100
