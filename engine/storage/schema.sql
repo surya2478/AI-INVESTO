@@ -282,6 +282,11 @@ CREATE TABLE IF NOT EXISTS scores (
     PRIMARY KEY (security_id, as_of_date)
 );
 
+-- What share of the composite rests on evidence rather than the neutral 50.
+-- A gem_score of 62 on 30% coverage and one on 95% coverage are not the same
+-- claim, and before this column existed there was no way to tell them apart.
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS coverage DOUBLE;
+
 -- Cursors for work that spans many nights. The filings backfill walks BSE in
 -- small windows because the exchange throttles sustained pagination, so its
 -- progress has to survive across runs.

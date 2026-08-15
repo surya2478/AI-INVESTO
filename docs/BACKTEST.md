@@ -131,6 +131,40 @@ of coverage. Available-weight renormalisation, shrinkage toward 50 in proportion
 to missingness, and a visible coverage score have to land before another
 backtest number is worth reading.
 
+## After renormalisation — the measurement got honest, the score did not get better
+
+Each pillar is now a weighted mean over the weight actually available, shrunk
+toward 50 in proportion to coverage, and `scores.coverage` records what share of
+the composite rests on evidence rather than on that default.
+
+What that does to the same universe:
+
+| Date | Composite coverage | Pillars at zero coverage |
+|---|---|---|
+| 2019-07-01 | **34%** | Growth, Quality, Valuation |
+| 2023-07-01 | **86%** | none (Quality at 49%, cash conversion still absent) |
+
+The 2019 ranking was always 34% evidence and 66% neutral default. It now says so,
+and the three empty pillars sit flat at 50 instead of voting as a constant and a
+stub.
+
+**It did not improve the result.**
+
+| | Before renormalisation | After |
+|---|---|---|
+| PIT-only mean IC | +0.037 | **+0.044** |
+| Restated mean IC | +0.167 (3 dates) | **+0.139** (4 dates) |
+
+PIT-only per-year: +0.12, +0.01, **−0.22**, +0.08, **+0.40**, +0.05, **−0.14**.
+Still no skill, still sign-unstable, still resting entirely on 2023. The restated
+run now reaches back to 2022 because annual PIT ingestion moved the earliest
+usable rebalance date, so its mean is over four dates rather than three; on the
+three shared dates it went +0.167 to +0.158.
+
+This is the point of the fix and it is worth stating plainly: renormalisation was
+necessary to stop the backtest measuring something other than the score, and it
+bought no performance. The composite still does not rank on point-in-time data.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so

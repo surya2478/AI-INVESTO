@@ -738,6 +738,7 @@ def score() -> None:
             "q_score": frame["q_score"], "d_score": frame["d_score"],
             "v_score": frame["v_score"], "m_score": frame["m_score"],
             "gem_score": frame["gem_score"],
+            "coverage": frame["coverage"],
             "rank_overall": frame["gem_score"].rank(ascending=False).astype(int),
             "gates_passed": None, "gates_failed": None,
             # `explain` is a JSON column; a bare string is rejected.
@@ -749,9 +750,10 @@ def score() -> None:
         con.execute("""
             INSERT INTO scores (security_id, as_of_date, theme_id, t_score, g_score,
                                 q_score, d_score, v_score, m_score, gem_score,
-                                rank_overall, gates_passed, gates_failed, explain)
+                                coverage, rank_overall, gates_passed, gates_failed,
+                                explain)
             SELECT security_id, as_of_date, theme_id, t_score, g_score, q_score,
-                   d_score, v_score, m_score, gem_score, rank_overall,
+                   d_score, v_score, m_score, gem_score, coverage, rank_overall,
                    gates_passed, gates_failed, explain
               FROM staged_scores
         """)

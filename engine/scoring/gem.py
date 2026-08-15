@@ -11,6 +11,15 @@ Inputs come from `fundamentals_pit`. For live scoring that includes Yahoo rows
 (`is_pit = FALSE`); for the backtest it must not, and `score_universe` takes
 `include_non_pit` so the caller decides rather than the module assuming.
 
+MISSING DATA IS TREATED AS MISSING, which sounds obvious and was not the case.
+Each pillar is a weighted mean over the weight actually available, so a pillar
+resting on two inputs is on the same 0-100 scale as one resting on five; it is
+then shrunk toward the neutral 50 in proportion to how much of it is known, so
+being on the same scale does not mean being trusted equally. `coverage` reports
+the share of the composite that rests on evidence rather than on that default.
+Read it alongside `gem_score`: 62 on 30% coverage and 62 on 95% coverage are not
+the same claim.
+
 WHAT IS NOT MODELLED, and would change the ranking if it were:
   * order book and capacity — the strongest forward signal for capital goods,
     available only in filings prose. Nothing here sees it.
@@ -39,6 +48,47 @@ def _pct_rank(series: pd.Series, ascending: bool = True) -> pd.Series:
     """Percentile rank 0-100, NaN-safe, ties averaged."""
     ranked = series.rank(pct=True, ascending=ascending, na_option="keep")
     return ranked * 100.0
+
+
+def _blend(components: list[tuple[pd.Series, float]]) -> tuple[pd.Series, pd.Series]:
+    """Weighted mean of ranked components over the weight ACTUALLY AVAILABLE.
+
+    The previous version summed weighted components and stopped there, so a
+    missing input did not widen the others' share -- it just removed its own
+    weight and left the pillar compressed toward zero. The effect is not subtle
+    and it is not neutral. Ranking the 2019 universe on point-in-time data, the
+    quality pillar had none of its five inputs except a pledge percentage that
+    had been defaulted to zero, and came out a CONSTANT 2.5 for all 69 companies
+    -- carrying no information whatever at 20% of the composite weight. Discovery
+    kept only turnover and spanned 0.4 to 30.0 where a pillar should span 100,
+    so size, 70% of that pillar, was silently absent rather than missing.
+
+    Dividing by the available weight puts every pillar back on one scale, so a
+    pillar built from two inputs is comparable with one built from five. How much
+    to TRUST it is a separate question, which is what `coverage` answers.
+
+    Returns (score 0-100 on the full scale, coverage 0-1).
+    """
+    total_weight = sum(weight for _, weight in components)
+    weighted = sum(series.fillna(0.0) * weight for series, weight in components)
+    available = sum(series.notna().astype(float) * weight for series, weight in components)
+
+    score = weighted / available.replace(0.0, np.nan)
+    return score, available / total_weight
+
+
+def _shrink(score: pd.Series, coverage: pd.Series) -> pd.Series:
+    """Pull a thinly-evidenced pillar toward the neutral 50.
+
+    Renormalising alone would let a pillar resting on one weak input swing the
+    composite as hard as one resting on all five. Shrinking in proportion to
+    coverage says the obvious thing instead: the less of a pillar we can see,
+    the less it should move the answer. At full coverage the score is untouched;
+    at half coverage it keeps half its distance from neutral; at zero coverage it
+    IS neutral, which is what the composite always claimed to do for a missing
+    pillar and never actually did for a half-missing one.
+    """
+    return 50.0 + (score.fillna(50.0) - 50.0) * coverage
 
 
 def _cagr(series: pd.Series, years: int) -> float | None:
@@ -231,60 +281,78 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None) -> 
 
     out = frame.copy()
 
+    # A pledge percentage is only zero if somebody filed a shareholding pattern
+    # saying so. Where there is no ownership filing at all, `promoter_pct` is
+    # absent too, and defaulting the pledge to zero there asserts "nothing is
+    # pledged" on no evidence -- it also kept the quality pillar permanently
+    # non-empty, which is how it survived as a constant instead of registering
+    # as missing.
+    filed = out["promoter_pct"].notna()
+    pledge = out["promoter_pledge_pct"].mask(filed & out["promoter_pledge_pct"].isna(), 0.0)
+
     # G — growth inflection. Acceleration is weighted above the level: a company
     # already growing 40% is priced for it, one going from 10% to 25% is not.
-    g = pd.concat([
-        _pct_rank(out["rev_accel"]) * 0.35,
-        _pct_rank(out["rev_cagr_2y"]) * 0.25,
-        _pct_rank(out["operating_leverage"]) * 0.20,
-        _pct_rank(out["margin_trend"]) * 0.10,
-        _pct_rank(out["capex_intensity"]) * 0.10,
-    ], axis=1).sum(axis=1, min_count=1)
+    pillars = {
+        "g_score": [
+            (_pct_rank(out["rev_accel"]), 0.35),
+            (_pct_rank(out["rev_cagr_2y"]), 0.25),
+            (_pct_rank(out["operating_leverage"]), 0.20),
+            (_pct_rank(out["margin_trend"]), 0.10),
+            (_pct_rank(out["capex_intensity"]), 0.10),
+        ],
+        # Q — quality. Cash conversion carries the most weight: it is the one
+        # input that is hard to manufacture.
+        "q_score": [
+            (_pct_rank(out["cash_conversion"]), 0.35),
+            (_pct_rank(out["roe"]), 0.30),
+            (_pct_rank(out["debt_equity"], ascending=False), 0.20),
+            (_pct_rank(out["promoter_pct"]), 0.10),
+            (_pct_rank(pledge, ascending=False), 0.05),
+        ],
+        # D — discovery. Smaller scores higher, but liquidity must still permit
+        # a position, so illiquidity is penalised rather than rewarded.
+        "d_score": [
+            (_pct_rank(out["market_cap"], ascending=False), 0.70),
+            (_pct_rank(out["turnover"]), 0.30),
+        ],
+        # V — valuation sanity. A brake, not a value screen: cheapness is
+        # rewarded only mildly, because insisting on it is how compounders get
+        # missed.
+        "v_score": [
+            (_pct_rank(out["pe"], ascending=False), 0.60),
+            (_pct_rank(out["pb"], ascending=False), 0.40),
+        ],
+        # M — price trend.
+        "m_score": [
+            (_pct_rank(out["mom_12m"]), 0.60),
+            (_pct_rank(out["mom_3m"]), 0.40),
+        ],
+    }
 
-    # Q — quality. Cash conversion carries the most weight: it is the one input
-    # that is hard to manufacture.
-    q = pd.concat([
-        _pct_rank(out["cash_conversion"]) * 0.35,
-        _pct_rank(out["roe"]) * 0.30,
-        _pct_rank(out["debt_equity"], ascending=False) * 0.20,
-        _pct_rank(out["promoter_pct"]) * 0.10,
-        _pct_rank(out["promoter_pledge_pct"].fillna(0), ascending=False) * 0.05,
-    ], axis=1).sum(axis=1, min_count=1)
+    coverages = {}
+    for pillar, components in pillars.items():
+        raw, coverage = _blend(components)
+        out[pillar] = _shrink(raw, coverage)
+        out[f"{pillar}_coverage"] = coverage * 100.0
+        coverages[pillar] = coverage
 
-    # D — discovery. Smaller scores higher, but liquidity must still permit a
-    # position, so illiquidity is penalised rather than rewarded.
-    d = pd.concat([
-        _pct_rank(out["market_cap"], ascending=False) * 0.70,
-        _pct_rank(out["turnover"]) * 0.30,
-    ], axis=1).sum(axis=1, min_count=1)
+    # T — theme tailwind. A company in no tracked theme is not evidence of
+    # anything, so it scores neutral and reports zero coverage rather than
+    # claiming a 50 it did not earn.
+    theme = out["ticker"].map(theme_scores or {})
+    theme_coverage = theme.notna().astype(float)
+    out["t_score"] = _shrink(theme, theme_coverage)
+    out["t_score_coverage"] = theme_coverage * 100.0
+    coverages["t_score"] = theme_coverage
 
-    # V — valuation sanity. A brake, not a value screen: cheapness is rewarded
-    # only mildly, because insisting on it is how compounders get missed.
-    v = pd.concat([
-        _pct_rank(out["pe"], ascending=False) * 0.60,
-        _pct_rank(out["pb"], ascending=False) * 0.40,
-    ], axis=1).sum(axis=1, min_count=1)
+    # Every pillar is now on the full 0-100 scale and already neutral where it
+    # has nothing behind it, so the composite needs no fillna of its own.
+    out["gem_score"] = sum(out[p] * w for p, w in GEM_WEIGHTS.items())
 
-    # M — price trend.
-    m = pd.concat([
-        _pct_rank(out["mom_12m"]) * 0.60,
-        _pct_rank(out["mom_3m"]) * 0.40,
-    ], axis=1).sum(axis=1, min_count=1)
-
-    out["g_score"] = g
-    out["q_score"] = q
-    out["d_score"] = d
-    out["v_score"] = v
-    out["m_score"] = m
-    # T — theme tailwind. Neutral 50 where a company belongs to no tracked theme,
-    # so the absence of a theme neither helps nor hurts.
-    out["t_score"] = out["ticker"].map(theme_scores or {}).fillna(50.0)
-
-    # Pillars are filled at the neutral midpoint when missing, so a company is
-    # not rewarded for having no data on a dimension.
-    composite = sum(out[p].fillna(50.0) * w for p, w in GEM_WEIGHTS.items())
-    out["gem_score"] = composite
-    out["pillars_missing"] = out[PILLARS].isna().sum(axis=1)
+    # How much of the score is evidence rather than the neutral default. Quoting
+    # a gem_score without this is quoting an average of things partly not known.
+    out["coverage"] = sum(coverages[p] * w for p, w in GEM_WEIGHTS.items()) * 100.0
+    out["pillars_missing"] = sum((coverages[p] == 0).astype(int) for p in PILLARS)
     return out.sort_values("gem_score", ascending=False)
 
 
