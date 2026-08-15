@@ -59,6 +59,30 @@ log = logging.getLogger(__name__)
 AVAILABILITY_LAG_DAYS = 90
 DECILES = 10
 
+# --------------------------------------------------------------- trading costs
+# EXPLICIT costs of one round trip in NSE delivery equity, in basis points.
+# These are published rates, not estimates:
+#   STT              0.10% buy + 0.10% sell        20.0
+#   brokerage        0.03% each way (discount)      6.0
+#   stamp duty       0.015% on buy only             1.5
+#   exchange txn     0.00297% each way              0.6
+#   SEBI turnover    0.0001% each way               0.02
+#   GST 18% on brokerage + exchange charges         1.2
+# A full-service broker charging 0.5% a side would add 100 bps on its own.
+EXPLICIT_ROUND_TRIP_BPS = 29.3
+
+# IMPACT is the part that actually decides whether a small-cap strategy is
+# investable, and it is not a fixed rate -- it grows with how much of a day's
+# volume you need. The square-root law is the standard form:
+#
+#     impact ≈ coefficient × daily volatility × sqrt(participation)
+#
+# where participation is the position as a fraction of a day's median turnover.
+# A coefficient of 1 is the common empirical calibration. This is a MODEL, and
+# the one number in this file that is fitted to nothing -- it is stated so it
+# can be argued with rather than buried.
+IMPACT_COEFFICIENT = 1.0
+
 
 def forward_return(con, security_ids: list[int], start: dt.date, months: int) -> pd.DataFrame:
     """Total return from `start` to `start + months`, per security."""
@@ -87,6 +111,44 @@ def forward_return(con, security_ids: list[int], start: dt.date, months: int) ->
         return frame
     frame["fwd_return"] = (frame["px1"] / frame["px0"] - 1.0) * 100.0
     return frame[["security_id", "fwd_return"]]
+
+
+def daily_volatility(con, as_of: dt.date, lookback_days: int = 90) -> pd.DataFrame:
+    """Standard deviation of daily returns per security, as of a date.
+
+    Impact scales with volatility, so a cost model that assumes one number for
+    the whole market understates it for exactly the illiquid names where it
+    matters. Measured per security from the prices already stored.
+    """
+    # The window bound is computed here rather than in SQL: DuckDB will not take
+    # a parameter inside INTERVAL, and interpolating one into the string is how
+    # a query starts accepting whatever is handed to it.
+    start = as_of - dt.timedelta(days=lookback_days)
+    return con.execute("""
+        WITH r AS (
+            SELECT security_id, date,
+                   adj_close / lag(adj_close) OVER (PARTITION BY security_id ORDER BY date) - 1 AS ret
+              FROM ohlcv
+             WHERE date <= ? AND date >= ?
+        )
+        SELECT security_id, stddev_samp(ret) AS daily_vol
+          FROM r WHERE ret IS NOT NULL
+         GROUP BY security_id HAVING count(*) >= 20
+    """, [as_of, start]).df()
+
+
+def round_trip_cost_bps(frame: pd.DataFrame, position_value: float) -> pd.Series:
+    """Cost of buying and later selling `position_value` of each name, in bps.
+
+    Explicit charges are flat; impact is paid twice, once entering and once
+    leaving, and grows with the square root of how much of a day's turnover the
+    position represents. A name with no turnover or no volatility on record
+    returns NaN rather than zero -- unknown cost is not free.
+    """
+    turnover = frame["turnover"].where(frame["turnover"] > 0)
+    participation = position_value / turnover
+    impact_bps = IMPACT_COEFFICIENT * frame["daily_vol"] * np.sqrt(participation) * 1e4
+    return EXPLICIT_ROUND_TRIP_BPS + 2.0 * impact_bps
 
 
 def rebalance_dates(con, horizon_months: int, include_non_pit: bool = True) -> list[dt.date]:
@@ -119,13 +181,19 @@ def rebalance_dates(con, horizon_months: int, include_non_pit: bool = True) -> l
 
 
 def run(con, horizon_months: int = 12, min_names: int = 100,
-        include_non_pit: bool = True) -> dict:
+        include_non_pit: bool = True, capital: float | None = None) -> dict:
     """Score the universe at each rebalance date and measure forward returns.
 
     `include_non_pit` defaults True because PIT-only data cannot currently feed
     the annual pillars -- see bias 1 in the module docstring. It is a parameter
     rather than a hardcoded flag so the compromise is declared at the call site
     and the result records which mode produced it.
+
+    `capital` turns on trading costs: the sum deployed into ONE decile, split
+    equally across its members, so position size and therefore impact scale with
+    it. Every return above it is gross, which for a small-cap-tilted strategy
+    flatters more the more money is involved -- the point of passing it is to
+    find the size at which the edge stops existing.
     """
     dates = rebalance_dates(con, horizon_months, include_non_pit=include_non_pit)
     if not dates:
@@ -147,6 +215,16 @@ def run(con, horizon_months: int = 12, min_names: int = 100,
 
         merged["decile"] = pd.qcut(merged["gem_score"].rank(method="first"),
                                    DECILES, labels=False) + 1
+
+        if capital:
+            merged = merged.merge(daily_volatility(con, as_of),
+                                  on="security_id", how="left")
+            # One decile is what you would actually hold, so the position is the
+            # capital divided by that decile's membership, not by the universe.
+            position = capital / max(len(merged) / DECILES, 1.0)
+            merged["cost_bps"] = round_trip_cost_bps(merged, position)
+            merged["net_return"] = merged["fwd_return"] - merged["cost_bps"] / 100.0
+
         periods.append({"as_of": as_of, "frame": merged})
 
     if not periods:
@@ -163,18 +241,24 @@ def run(con, horizon_months: int = 12, min_names: int = 100,
                         "pit_only": True}
         return {"error": "no period had enough names to rank"}
 
+    columns = ["fwd_return"] + (["net_return"] if capital else [])
     by_decile = []
     for period in periods:
-        grouped = (period["frame"].groupby("decile")["fwd_return"]
-                   .agg(["mean", "median", "count"]).reset_index())
+        grouped = (period["frame"].groupby("decile")[columns]
+                   .agg(["mean", "median"]))
+        grouped.columns = [f"{c}_{stat}" for c, stat in grouped.columns]
+        grouped = grouped.reset_index()
         grouped["as_of"] = period["as_of"]
         by_decile.append(grouped)
 
     deciles = pd.concat(by_decile, ignore_index=True)
-    summary = (deciles.groupby("decile")[["mean", "median"]].mean().reset_index()
-               .rename(columns={"mean": "avg_return", "median": "median_return"}))
+    stat_columns = [c for c in deciles.columns if c not in ("decile", "as_of")]
+    summary = deciles.groupby("decile")[stat_columns].mean().reset_index().rename(
+        columns={"fwd_return_mean": "avg_return", "fwd_return_median": "median_return",
+                 "net_return_mean": "avg_net", "net_return_median": "median_net"})
 
-    universe_mean = float(pd.concat(p["frame"] for p in periods)["fwd_return"].mean())
+    everything = pd.concat(p["frame"] for p in periods)
+    universe_mean = float(everything["fwd_return"].mean())
     top = float(summary.loc[summary.decile == DECILES, "avg_return"].iloc[0])
     bottom = float(summary.loc[summary.decile == 1, "avg_return"].iloc[0])
 
@@ -186,7 +270,7 @@ def run(con, horizon_months: int = 12, min_names: int = 100,
         for p in periods
     ]
 
-    return {
+    result = {
         "periods": [p["as_of"] for p in periods],
         "names_per_period": [len(p["frame"]) for p in periods],
         "summary": summary,
@@ -201,4 +285,23 @@ def run(con, horizon_months: int = 12, min_names: int = 100,
         # Data quality travels with the result so a number cannot be quoted
         # without the caveat that qualifies it.
         "pit_only": not include_non_pit,
+        "capital": capital,
     }
+
+    if capital:
+        top_names = everything[everything.decile == DECILES]
+        result.update({
+            "top_decile_net": float(summary.loc[summary.decile == DECILES,
+                                                "avg_net"].iloc[0]),
+            "bottom_decile_net": float(summary.loc[summary.decile == 1,
+                                                   "avg_net"].iloc[0]),
+            "net_spread": float(summary.loc[summary.decile == DECILES, "avg_net"].iloc[0]
+                                - summary.loc[summary.decile == 1, "avg_net"].iloc[0]),
+            # What the top decile actually costs to hold, which is the number
+            # that decides whether any of this is investable.
+            "top_decile_cost_bps": float(top_names["cost_bps"].median()),
+            "top_decile_cost_bps_p90": float(top_names["cost_bps"].quantile(0.9)),
+            "position_value": capital / max(len(everything) / len(periods) / DECILES, 1.0),
+            "names_without_cost": int(top_names["cost_bps"].isna().sum()),
+        })
+    return result

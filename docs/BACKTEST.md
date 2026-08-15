@@ -432,6 +432,62 @@ roughly a quarter evidence and three-quarters neutral default, because cash flow
 starts at FY2022 and the balance sheet at FY2023. The 2018 and 2019 ICs are
 nearly meaningless as tests of the score as designed.
 
+## Trading costs — they do not destroy the edge, and that is not good news
+
+Every return above is gross. `harness.run(capital=...)` now charges for the
+round trip: published Indian explicit rates (STT, brokerage, stamp, exchange,
+SEBI, GST) come to **29.3 bps**, and impact is modelled with the square-root law
+— coefficient × the security's own measured daily volatility × sqrt(position ÷
+median daily turnover) — paid on the way in and again on the way out.
+
+Deploying into the top decile, split equally across its ~66 members:
+
+| Capital | Position | Cost, median | Cost, p90 | Top decile net | Decile spread |
+|---|---|---|---|---|---|
+| ₹0.1 cr | ₹0.2 L | 35 bps | 53 bps | 49.0% | 21.9 |
+| ₹1 cr | ₹1.9 L | 48 bps | 105 bps | 48.8% | 21.9 |
+| ₹10 cr | ₹19 L | 90 bps | 270 bps | 48.0% | 21.9 |
+| ₹50 cr | ₹96 L | 165 bps | 567 bps | 46.5% | 21.9 |
+
+Gross top decile is 49.4% and the gross spread 21.9 throughout.
+
+**The spread barely moves, because costs are nearly uniform across deciles.** At
+₹10 cr the top decile pays 76 bps and the bottom 60 bps — a 16 bps differential
+on a 2,190 bps spread. Costs reduce the absolute return; they do not reduce the
+ranking's apparent value.
+
+### What this actually revealed: the universe is not small caps
+
+The expected result was that impact would eat a small-cap strategy alive. It
+does not, and the reason matters more than the answer:
+
+| Decile | Median market cap | Median turnover |
+|---|---|---|
+| 1 (lowest score) | ₹23,437 cr | ₹41 cr/day |
+| 10 (highest score) | **₹7,788 cr** | **₹28 cr/day** |
+
+The top decile's median company is a **₹7,800 crore mid-cap trading ₹28 crore a
+day**. A ₹19 lakh position is 0.7% of one day's volume. That is not a liquidity
+problem; it is barely a trade.
+
+So "Discovery is the strongest pillar" has been describing a tilt from large
+caps toward mid caps inside an index universe, not a microcap bet. The
+survivorship caveat compounds it: NIFTY TOTAL MARKET plus MICROCAP 250 as
+constituted TODAY contains the microcaps that survived to be listed now.
+
+### Do not read this as validation
+
+Costs failing to kill an edge of +0.087 mean IC does not make the edge real. It
+means the strategy is cheap enough to run and still does not demonstrably rank.
+The honest summary is that execution was never the binding constraint — the
+signal is.
+
+Limits of the model, stated because they run the same direction: it assumes the
+whole position trades against one day's median turnover rather than being worked
+over several days, it ignores borrow and short costs entirely (the spread is
+long-short on paper and only the long leg is investable here), and its impact
+coefficient of 1.0 is a convention, not a calibration to Indian data.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so
