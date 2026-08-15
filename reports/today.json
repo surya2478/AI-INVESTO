@@ -4167,6 +4167,8 @@
         {
           "band": "UPPER",
           "count": 15,
+          "score_lo": 53.618277660968474,
+          "score_hi": 65.4260097027969,
           "avg_growth": 56.725984187841625,
           "avg_quality": 58.69758485037581,
           "avg_momentum": 58.76527908492,
@@ -4260,6 +4262,8 @@
         {
           "band": "MIDDLE",
           "count": 11,
+          "score_lo": 47.85863097122512,
+          "score_hi": 53.04524629008135,
           "avg_growth": 44.17708537379595,
           "avg_quality": 56.67741133390343,
           "avg_momentum": 51.920325385177335,
@@ -4346,6 +4350,8 @@
         {
           "band": "LOWER",
           "count": 13,
+          "score_lo": 38.515431314053,
+          "score_hi": 47.3021399032921,
           "avg_growth": 32.078622009917616,
           "avg_quality": 48.57958437784576,
           "avg_momentum": 29.344836803679925,
@@ -4497,13 +4503,6 @@
         "total": 762
       },
       {
-        "gate_name": "related_party",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 762.0,
-        "total": 762
-      },
-      {
         "gate_name": "receivable_days",
         "passed": 0.0,
         "failed": 0.0,
@@ -4512,6 +4511,13 @@
       },
       {
         "gate_name": "contingent_liabilities",
+        "passed": 0.0,
+        "failed": 0.0,
+        "unknown": 762.0,
+        "total": 762
+      },
+      {
+        "gate_name": "related_party",
         "passed": 0.0,
         "failed": 0.0,
         "unknown": 762.0,

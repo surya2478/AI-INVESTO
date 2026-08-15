@@ -109,7 +109,10 @@ def build(con=None) -> dict:
             ],
         })
 
-    # Surface India-trailing themes first: those are the ones worth a look.
+    # Surface India-trailing themes first. This orders the board by how UNUSUAL
+    # the gap is, not by how promising it is -- whether a wide gap predicts India
+    # catching up has never been tested, and `theme_divergence` says as much in
+    # its own docstring. The screen labels it accordingly.
     themes.sort(
         key=lambda t: (t["divergence"].get("state") != "INDIA_TRAILING",
                        -t["confluence"])
@@ -178,6 +181,11 @@ def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
         out["bands"].append({
             "band": band,
             "count": int(len(sub)),
+            # The score range, so the screen can name a band by what it IS
+            # rather than by where it sits. "Upper third" asserts an ordering
+            # the backtest does not support; "score 58-72" asserts a fact.
+            "score_lo": float(sub["gem_score"].min()),
+            "score_hi": float(sub["gem_score"].max()),
             "avg_growth": float(sub["g_score"].mean()),
             "avg_quality": float(sub["q_score"].mean()),
             "avg_momentum": float(sub["m_score"].mean()),

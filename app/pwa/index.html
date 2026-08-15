@@ -160,11 +160,11 @@
 <section id="view-today">
   <div class="band-label"><span>Market pulse</span></div>
   <div class="pulse" id="pulse"></div>
-  <div class="band-label"><span>Worth a look</span></div>
+  <div class="band-label"><span>Unusual divergence</span><span>untested signal</span></div>
   <div id="attention"></div>
   <div class="band-label"><span>Screening</span><span id="screen-count"></span></div>
   <div class="verdicts" id="verdicts"></div>
-  <div class="band-label"><span>Score bands</span><span>not a ranking</span></div>
+  <div class="band-label"><span>Score bands</span><span>tracks size and value, not growth or quality</span></div>
   <div id="bands"></div>
   <div class="note" id="disclaimer"></div>
 </section>
@@ -480,10 +480,17 @@ function render(d) {
 
   const themes = d.themes || [];
   const focus = themes.find(t => t.divergence?.state === "INDIA_TRAILING") || themes[0];
+  // An observation, not a recommendation. `trends.theme_divergence` says so in
+  // its own docstring — "whether wide gaps actually mean-revert is a Stage 3
+  // backtest question" — and that event study has not been run. The screen used
+  // to head this "Worth a look", which is a call to act on an untested signal.
   document.getElementById("attention").innerHTML = focus ? `
     <div class="card accent"><div class="tag">${
       focus.divergence?.state === "INDIA_TRAILING" ? "India trailing its global leg" : "Theme in focus"}</div>
-    <h3>${focus.name}</h3><p>${focus.divergence?.text || ""}</p></div>` : "";
+    <h3>${focus.name}</h3><p>${focus.divergence?.text || ""}</p>
+    <p style="margin-top:8px;font-size:11px;color:var(--muted)">
+      Divergence is measured, not validated: nobody has tested whether a gap this
+      wide predicts India catching up. Treat it as something to explain, not a signal.</p></div>` : "";
 
   const g = d.gates || {};
   if (g.available) {
@@ -511,11 +518,15 @@ function render(d) {
   }
 
   const B = (g.bands || {});
-  const label = { UPPER:"Upper third", MIDDLE:"Middle third", LOWER:"Lower third" };
+  // Bands are named by their SCORE RANGE, not by position. "Upper third" states
+  // an ordering the backtest does not support: the composite's ranking tracks
+  // size and cheapness, while growth and quality — 45% of its weight and the
+  // whole claim — earn nothing. A range is a fact; a rank is an assertion.
+  const range = b => `Score ${b.score_lo.toFixed(0)}–${b.score_hi.toFixed(0)}`;
   document.getElementById("bands").innerHTML = B.available
     ? (B.bands || []).map(b => `
         <div class="bandbox ${b.band.toLowerCase()}">
-          <div class="bh"><b>${label[b.band]}</b><span>${b.count} cleared</span></div>
+          <div class="bh"><b>${b.score_lo != null ? range(b) : b.band}</b><span>${b.count} cleared</span></div>
           <div class="bs">growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} · momentum ${b.avg_momentum.toFixed(0)}</div>
           <div class="chips">${b.names.map(n =>
             `<span class="cn tap" data-ticker="${n.ticker}">${n.ticker} <span>${cr(n.mcap_cr)}</span></span>`).join("")}</div>
