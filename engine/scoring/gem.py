@@ -50,6 +50,50 @@ def _pct_rank(series: pd.Series, ascending: bool = True) -> pd.Series:
     return ranked * 100.0
 
 
+# Peer cohorts for size-neutral ranking. Five is the usual choice; the floor is
+# what stops it degenerating -- ranking inside a bucket of four names produces
+# percentiles that are mostly an artefact of the bucket boundary.
+SIZE_BUCKETS = 5
+MIN_PER_BUCKET = 12
+
+
+def _size_buckets(market_cap: pd.Series, buckets: int = SIZE_BUCKETS) -> pd.Series:
+    """Which size cohort each company belongs to.
+
+    Companies with no market cap on the date go into their own cohort rather
+    than being dropped or silently pooled with the smallest: not knowing a
+    company's size is a different statement from knowing it is small.
+    """
+    usable = int(market_cap.notna().sum())
+    buckets = min(buckets, usable // MIN_PER_BUCKET)
+    if buckets <= 1:
+        return pd.Series("all", index=market_cap.index)
+
+    ranked = market_cap.rank(method="first")
+    labelled = pd.qcut(ranked, buckets, labels=False)
+    return labelled.fillna(-1).astype(int).astype(str)
+
+
+def _pct_rank_within(series: pd.Series, cohort: pd.Series,
+                     ascending: bool = True) -> pd.Series:
+    """Percentile rank against size PEERS rather than the whole universe.
+
+    Quality was measuring size. ROE correlates +0.36 to +0.40 with market cap
+    and debt-to-equity -0.22 to -0.25, so ranking them universe-wide made the
+    pillar a proxy for bigness -- and set it against Discovery, which puts 70% of
+    its weight on smallness. The two ran at -0.33 to -0.52 correlation and
+    cancelled, 35% of the composite spent on a contradiction.
+
+    Ranking inside a cohort asks the question the pillar meant to ask: is this a
+    well-run company FOR ITS SIZE. It is deliberately not applied to Discovery,
+    whose entire purpose is to rank on size, nor to Valuation, where the small-
+    company discount is the signal rather than a confound.
+    """
+    ranked = series.groupby(cohort, dropna=False).rank(
+        pct=True, ascending=ascending, na_option="keep")
+    return ranked * 100.0
+
+
 def _blend(components: list[tuple[pd.Series, float]]) -> tuple[pd.Series, pd.Series]:
     """Weighted mean of ranked components over the weight ACTUALLY AVAILABLE.
 
@@ -332,6 +376,8 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None,
     filed = out["promoter_pct"].notna()
     pledge = out["promoter_pledge_pct"].mask(filed & out["promoter_pledge_pct"].isna(), 0.0)
 
+    cohort = _size_buckets(out["market_cap"])
+
     # G — growth inflection. Acceleration is weighted above the level: a company
     # already growing 40% is priced for it, one going from 10% to 25% is not.
     #
@@ -351,14 +397,16 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None,
             (_pct_rank(out["operating_leverage"]), 0.20),
             (_pct_rank(out["margin_trend"]), 0.10),
         ],
-        # Q — quality. Cash conversion carries the most weight: it is the one
-        # input that is hard to manufacture.
+        # Q — quality, ranked WITHIN SIZE COHORTS. Cash conversion carries the
+        # most weight: it is the one input that is hard to manufacture. Every
+        # input here is judged against size peers, because universe-wide ranking
+        # turned the pillar into a proxy for bigness -- see `_pct_rank_within`.
         "q_score": [
-            (_pct_rank(out["cash_conversion"]), 0.35),
-            (_pct_rank(out["roe"]), 0.30),
-            (_pct_rank(out["debt_equity"], ascending=False), 0.20),
-            (_pct_rank(out["promoter_pct"]), 0.10),
-            (_pct_rank(pledge, ascending=False), 0.05),
+            (_pct_rank_within(out["cash_conversion"], cohort), 0.35),
+            (_pct_rank_within(out["roe"], cohort), 0.30),
+            (_pct_rank_within(out["debt_equity"], cohort, ascending=False), 0.20),
+            (_pct_rank_within(out["promoter_pct"], cohort), 0.10),
+            (_pct_rank_within(pledge, cohort, ascending=False), 0.05),
         ],
         # D — discovery. Smaller scores higher, but liquidity must still permit
         # a position, so illiquidity is penalised rather than rewarded.

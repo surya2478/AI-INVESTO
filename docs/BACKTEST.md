@@ -309,9 +309,32 @@ the composite (+0.073) scores below its best single pillar (+0.164).
 
 Do NOT flip `debt_equity`. "Leverage outperformed across three years of a
 cyclical upswing" is the most regime-dependent claim in this document, and
-inverting a solvency preference on it would be the worst trade in the file. The
-defensible move is size-neutral ranking within the pillar, which removes the
-loading that is making Q and D cancel.
+inverting a solvency preference on it would be the worst trade in the file.
+
+### Size-neutral ranking — the confound is gone, the pillar is not fixed
+
+Quality's five inputs are now ranked inside size quintiles rather than across the
+whole universe, so the question is whether a company is well run FOR ITS SIZE.
+Discovery and Valuation are deliberately left alone: ranking on size is
+Discovery's entire purpose, and the small-company discount is Valuation's signal
+rather than a confound.
+
+| | Before | After |
+|---|---|---|
+| corr(quality, market cap) | +0.36 / +0.38 / +0.40 | **+0.035 / +0.020 / +0.027** |
+| corr(quality, discovery) | −0.33 / −0.49 / −0.52 | **−0.020 / −0.061 / −0.089** |
+| Quality mean IC | −0.071 | −0.042 |
+| Composite mean IC | +0.073 | +0.078 |
+
+The size loading is gone and the two pillars have stopped cancelling — 35% of the
+composite is no longer spent on a contradiction. That was the aim and it is
+comprehensively met.
+
+**Quality is still negative.** Which settles something: the residual is NOT the
+size confound, because the confound is now absent and the sign did not change.
+It is either a genuine property of this regime, or noise on four observations —
+and four observations cannot tell those apart. The composite improvement of
++0.005 is well inside noise and should not be read as the fix working.
 
 Pledge remains without a historical source: it is not in the shareholding feed,
 and the pledge endpoint currently returns empty payloads for every symbol.
