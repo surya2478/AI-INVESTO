@@ -243,12 +243,19 @@ def ingest_prices(
 @ingest_app.command("fundamentals")
 def ingest_fundamentals(
     limit: int = typer.Option(0, help="Cap the number of symbols (0 = all)"),
-    max_filings: int = typer.Option(12, help="Filings per company (~3 years of quarters)"),
+    max_filings: int = typer.Option(12, help="Quarterly filings per company (0 to skip)"),
+    max_annual: int = typer.Option(10, help="Annual filings per company (0 to skip)"),
     themes_only: bool = typer.Option(
         True, help="Restrict to Indian theme-graph names rather than the full universe"
     ),
 ) -> None:
-    """Pull quarterly financials with true filing dates from NSE XBRL."""
+    """Pull quarterly and annual financials with true filing dates from NSE XBRL.
+
+    Annual filings are what the score actually ranks on, and NSE serves them
+    under a separate query, so this fetches both. Note the coverage ceiling:
+    XBRL annual documents exist from roughly FY2018, and they carry the balance
+    sheet and cash-flow statement only from FY2023.
+    """
     from engine.fundamentals import coverage_report, pit_selftest, sync_fundamentals
     from engine.universe.builder import investable_universe
 
@@ -266,9 +273,10 @@ def ingest_fundamentals(
             symbols = symbols[:limit]
 
         console.print(f"fetching financials for [bold]{len(symbols)}[/bold] companies "
-                      f"({max_filings} filings each)...")
+                      f"({max_filings} quarterly + {max_annual} annual each)...")
         started = dt.datetime.now()
-        result = sync_fundamentals(con, symbols, max_filings=max_filings)
+        result = sync_fundamentals(con, symbols, max_filings=max_filings,
+                                   max_annual=max_annual)
 
         console.print(f"[green]{result['written']:,} facts[/green] from "
                       f"{len(result['ok'])} companies")

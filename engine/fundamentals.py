@@ -42,6 +42,49 @@ def derive_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         margin = (derived[0] / wide["revenue"].replace(0, pd.NA)) * 100
         derived.append(margin.rename("ebitda_margin"))
 
+    # Net worth: attributable to owners where the filing splits out minority
+    # interests, since ROE pairs it with profit attributable to owners. Falling
+    # back to total equity, then to the components, because which of the three a
+    # company reports varies by filing format rather than by anything meaningful.
+    if "equity_owners" in wide.columns:
+        net_worth = wide["equity_owners"]
+    elif "equity_total" in wide.columns:
+        net_worth = wide["equity_total"]
+    elif {"equity_share_capital", "other_equity"} <= set(wide.columns):
+        net_worth = wide["equity_share_capital"] + wide["other_equity"]
+    else:
+        net_worth = None
+    if net_worth is not None:
+        derived.append(net_worth.rename("net_worth"))
+
+    # Total borrowings. Either leg may legitimately be absent -- a debt-free
+    # company files one line as zero and omits the other -- so a missing leg is
+    # treated as zero, but only when at least one was actually reported.
+    debt_legs = [c for c in ("borrowings_current", "borrowings_noncurrent") if c in wide.columns]
+    if debt_legs:
+        total_debt = sum(wide[c].fillna(0) for c in debt_legs)
+        derived.append(total_debt.where(wide[debt_legs].notna().any(axis=1)).rename("total_debt"))
+
+    # Share count from paid-up capital and face value. Never from the rupee
+    # figure alone: a face-value split moves it without a share being issued.
+    #
+    # Two sources of paid-up capital, and the fallback is the useful one. The
+    # balance-sheet line only appears in annual filings from FY2023, while
+    # `equity_capital` is on the face of every quarterly result back to FY2018.
+    # Point-in-time market cap needs a share count at every ranking date, so
+    # taking it from the quarterly filings is what makes the historical cap
+    # computable at all.
+    capital = None
+    if "equity_share_capital" in wide.columns:
+        capital = wide["equity_share_capital"]
+        if "equity_capital" in wide.columns:
+            capital = capital.fillna(wide["equity_capital"])
+    elif "equity_capital" in wide.columns:
+        capital = wide["equity_capital"]
+    if capital is not None and "face_value" in wide.columns:
+        face = wide["face_value"].where(wide["face_value"] > 0)
+        derived.append((capital / face).rename("share_count"))
+
     if not derived:
         return frame
 
@@ -62,8 +105,14 @@ def sync_fundamentals(
     symbols: list[str],
     max_filings: int = 12,
     provider: NSEFilingsProvider | None = None,
+    max_annual: int = 12,
 ) -> dict:
-    """Fetch and store quarterly financials for `symbols` (NSE codes, no suffix)."""
+    """Fetch and store quarterly AND annual financials for `symbols`.
+
+    `symbols` are NSE codes without the .NS suffix. `max_annual` governs how far
+    back the annual history reaches; twelve years is the horizon a decile
+    backtest needs to say anything, and each year is one extra HTTP fetch.
+    """
     provider = provider or NSEFilingsProvider()
     id_map = db.security_map(con)
 
@@ -77,7 +126,8 @@ def sync_fundamentals(
             continue
 
         try:
-            facts = provider.fetch_fundamentals(symbol, max_filings=max_filings)
+            facts = provider.fetch_fundamentals(symbol, max_filings=max_filings,
+                                                max_annual=max_annual)
         except ProviderError as exc:
             failed.append((symbol, str(exc)[:80]))
             continue
