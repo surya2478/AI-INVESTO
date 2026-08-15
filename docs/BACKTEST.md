@@ -207,6 +207,59 @@ should be against reported segment disclosures, not against this table.
 subtracting, at 20% and 25% of the weight. Five of the six pillars are not
 earning their place.
 
+## Why growth fails — measured, not guessed
+
+| Input | Weight | Mean IC |
+|---|---|---|
+| `rev_accel` | 35% | −0.018 |
+| `rev_cagr_2y` | 25% | −0.073 |
+| `operating_leverage` | 20% | **+0.122** |
+| `margin_trend` | 10% | −0.040 |
+| `capex_intensity` | 10% | −0.098 |
+
+Sixty per cent of the pillar's weight sat on the two inputs earning nothing, and
+the only component that worked carried twenty.
+
+**Revenue growth does not predict forward returns in this sample, in any
+measurement.** Four variants tested against the same universe: the shipped
+overlapping acceleration −0.018, a clean non-overlapping acceleration −0.036,
+year-on-year growth −0.090, two-year CAGR −0.105. All flat to negative, sign
+unstable. This is not an implementation defect hiding a good signal.
+
+The likely mechanism is valuation, not growth: `rev_cagr_2y` correlates +0.14 to
++0.27 with P/E, while `operating_leverage` — the one input that survives — has no
+such loading at −0.04 to −0.05. High-growth names were the expensive ones, and
+paying up is what cost. That is a statement about 2021-25, not a law.
+
+Note also what `operating_leverage` actually is: PAT CAGR minus revenue CAGR,
+i.e. margin expansion. The growth pillar's only working component is not a growth
+signal.
+
+### Three hygiene fixes, and what they did
+
+Chosen on correctness grounds, not by looking at returns; re-measured afterwards.
+
+1. `rev_4y` was named for four years and computed three.
+2. Acceleration compared a 2-year CAGR against a 3-year CAGR — a window against a
+   superset of itself. It now compares the latest year against the prior year.
+3. `capex_intensity` was dropped. The thesis was fine (spending ahead of demand
+   precedes growth) but capex over revenue measures how capital-hungry an
+   industry is; a cement plant and a company doubling capacity look identical.
+   Remaining weights were left untouched.
+
+| | Before | After |
+|---|---|---|
+| `rev_accel` vs `rev_cagr_2y` correlation | **+0.44 to +0.76** | **−0.22 to +0.08** |
+| Growth coverage (2021 / 2024) | 35% / 88% | **79% / 94%** |
+| Growth pillar mean IC | −0.033 | −0.012 |
+| Composite mean IC | +0.061 | +0.072 |
+
+The structural aims were met: acceleration is now independent of the level rather
+than a restatement of it, and more companies are scorable. The return improvement
+is small and well inside noise for seven observations — it should not be read as
+the fix working. Growth still earns nothing, which is what the four-variant test
+above already said it would.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so

@@ -101,6 +101,28 @@ def _cagr(series: pd.Series, years: int) -> float | None:
     return ((end / start) ** (1.0 / years) - 1.0) * 100.0
 
 
+def _growth_acceleration(series: pd.Series) -> float | None:
+    """Change in the growth RATE, measured over windows that do not overlap.
+
+    The previous version subtracted a 3-year CAGR from a 2-year CAGR -- a window
+    against a superset of itself, differing by one year -- which is why the
+    result correlated +0.44 to +0.76 with the plain 2-year CAGR it was meant to
+    add information to. The heaviest input in the growth pillar was largely a
+    noisy restatement of the second heaviest.
+
+    Comparing the latest year against the one before it costs some smoothing but
+    is at least measuring the thing the pillar claims to measure: a company going
+    from 10% to 25% growth, not one already growing 40% and priced for it.
+    """
+    if len(series) < 3:
+        return None
+    latest, prior, base = (float(series.iloc[-1]), float(series.iloc[-2]),
+                           float(series.iloc[-3]))
+    if prior <= 0 or base <= 0:
+        return None
+    return ((latest / prior) - (prior / base)) * 100.0
+
+
 def build_features(con, as_of: dt.date, include_non_pit: bool = True) -> pd.DataFrame:
     """Per-company inputs for the pillars, as of a date."""
     facts = db.fundamentals_asof(con, as_of, periods=24, include_non_pit=include_non_pit)
@@ -125,7 +147,7 @@ def build_features(con, as_of: dt.date, include_non_pit: bool = True) -> pd.Data
         net_worth = wide["net_worth"].dropna() if "net_worth" in wide else pd.Series(dtype=float)
         debt = wide["total_debt"].dropna() if "total_debt" in wide else pd.Series(dtype=float)
 
-        rev_2y, rev_4y = _cagr(revenue, 2), _cagr(revenue, 3)
+        rev_2y = _cagr(revenue, 2)
         pat_2y = _cagr(pat, 2)
 
         # Margin trend: latest EBITDA margin minus the margin two years back.
@@ -141,9 +163,10 @@ def build_features(con, as_of: dt.date, include_non_pit: bool = True) -> pd.Data
             "security_id": security_id,
             # Growth
             "rev_cagr_2y": rev_2y,
-            "rev_accel": (rev_2y - rev_4y) if (rev_2y is not None and rev_4y is not None) else None,
+            "rev_accel": _growth_acceleration(revenue),
             "operating_leverage": (pat_2y - rev_2y) if (pat_2y is not None and rev_2y is not None) else None,
             "margin_trend": (margin_now - margin_then) if (margin_now is not None and margin_then is not None) else None,
+            # Still computed, no longer scored -- see the growth pillar for why.
             "capex_intensity": (abs(float(capex.iloc[-1])) / latest_rev * 100)
                                if len(capex) and latest_rev else None,
             # Quality
@@ -298,13 +321,22 @@ def score(frame: pd.DataFrame, theme_scores: dict[str, float] | None = None,
 
     # G — growth inflection. Acceleration is weighted above the level: a company
     # already growing 40% is priced for it, one going from 10% to 25% is not.
+    #
+    # CAPEX INTENSITY WAS DROPPED, and the weights of what remains are unchanged
+    # -- `_blend` divides by the weight present, so the other four keep their
+    # relative sizes and nothing was re-tuned. The thesis for it was reasonable
+    # (spending ahead of demand precedes growth) but capex over revenue does not
+    # measure that. It measures how capital-hungry an industry is: a cement plant
+    # and a company doubling its capacity look identical, and the first is far
+    # more common. Reinstating it needs a measure that separates investment from
+    # industry -- capex against depreciation, or capex growth against its own
+    # history -- not this one pointed in a different direction.
     pillars = {
         "g_score": [
             (_pct_rank(out["rev_accel"]), 0.35),
             (_pct_rank(out["rev_cagr_2y"]), 0.25),
             (_pct_rank(out["operating_leverage"]), 0.20),
             (_pct_rank(out["margin_trend"]), 0.10),
-            (_pct_rank(out["capex_intensity"]), 0.10),
         ],
         # Q — quality. Cash conversion carries the most weight: it is the one
         # input that is hard to manufacture.
