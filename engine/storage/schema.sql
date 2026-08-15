@@ -114,6 +114,23 @@ CREATE TABLE IF NOT EXISTS ownership_pit (
 -- the ingest date, which is what that failure looks like from the outside.
 ALTER TABLE ownership_pit ADD COLUMN IF NOT EXISTS is_pit BOOLEAN DEFAULT TRUE;
 
+-- The newest disclosure per company, for screens that mean "as things stand".
+--
+-- `ownership_pit` is append-only history, so joining it directly multiplies rows
+-- by the number of quarters held. That was invisible while the table carried one
+-- quarter per company and became a 3.7x row explosion the moment real history
+-- was backfilled -- silently duplicating companies in the screen and in the
+-- demo payload. Live screens join THIS; anything as-of must keep filtering
+-- `filing_date <= as_of` itself, which this view deliberately does not do.
+CREATE OR REPLACE VIEW ownership_latest AS
+SELECT security_id, quarter_end, filing_date, promoter_pct, promoter_pledge_pct,
+       fii_pct, dii_pct, public_pct, source, is_pit
+  FROM (
+    SELECT *, row_number() OVER (PARTITION BY security_id
+                                 ORDER BY quarter_end DESC, filing_date DESC) AS rn
+      FROM ownership_pit
+  ) WHERE rn = 1;
+
 -- Corporate red flags with a discovery date, so gates can fire point-in-time.
 CREATE TABLE IF NOT EXISTS corporate_events (
     security_id  BIGINT  NOT NULL,

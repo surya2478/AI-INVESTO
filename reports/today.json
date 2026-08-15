@@ -3878,12 +3878,14 @@
     "available": true,
     "as_of": "2026-08-14",
     "verdicts": {
-      "REJECTED": 143,
-      "CLEARED": 327,
       "FLAGGED": 233,
-      "UNVETTED": 58
+      "UNVETTED": 58,
+      "CLEARED": 327,
+      "REJECTED": 143
     },
     "cleared_total": 327,
+    "cleared_theme_total": 45,
+    "cleared_theme_shown": 45,
     "cleared_theme": [
       {
         "ticker": "AWHCL",
@@ -3896,14 +3898,14 @@
         "ticker": "ROTO",
         "theme": "Water Treatment & Infrastructure",
         "mcap_cr": 1248.0,
-        "promoter_pct": null,
+        "promoter_pct": 66.8,
         "pledge_pct": null
       },
       {
         "ticker": "KRSNAA",
         "theme": "Innovative Health & Life Sciences",
         "mcap_cr": 1788.0,
-        "promoter_pct": null,
+        "promoter_pct": 27.1,
         "pledge_pct": null
       },
       {
@@ -3917,7 +3919,7 @@
         "ticker": "MOSCHIP",
         "theme": "Semiconductors & Electronics Manufacturing",
         "mcap_cr": 4097.0,
-        "promoter_pct": null,
+        "promoter_pct": 39.3,
         "pledge_pct": null
       },
       {
@@ -3931,7 +3933,7 @@
         "ticker": "BORORENEW",
         "theme": "Solar & Renewables",
         "mcap_cr": 8138.0,
-        "promoter_pct": null,
+        "promoter_pct": 58.8,
         "pledge_pct": null
       },
       {
@@ -3945,7 +3947,7 @@
         "ticker": "RAILTEL",
         "theme": "AI & Compute",
         "mcap_cr": 9156.0,
-        "promoter_pct": null,
+        "promoter_pct": 72.8,
         "pledge_pct": null
       },
       {
@@ -3994,14 +3996,14 @@
         "ticker": "FINEORG",
         "theme": "Specialty Chemicals & Advanced Materials",
         "mcap_cr": 15774.0,
-        "promoter_pct": null,
+        "promoter_pct": 75.0,
         "pledge_pct": null
       },
       {
         "ticker": "SYNGENE",
         "theme": "Innovative Health & Life Sciences",
         "mcap_cr": 16211.0,
-        "promoter_pct": null,
+        "promoter_pct": 52.6,
         "pledge_pct": null
       },
       {
@@ -4050,8 +4052,155 @@
         "ticker": "AMBER",
         "theme": "AI & Compute",
         "mcap_cr": 25303.0,
-        "promoter_pct": null,
+        "promoter_pct": 38.1,
         "pledge_pct": null
+      },
+      {
+        "ticker": "SYRMA",
+        "theme": "Semiconductors & Electronics Manufacturing",
+        "mcap_cr": 28222.0,
+        "promoter_pct": 42.3,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "NETWEB",
+        "theme": "Data Centre Ecosystem",
+        "mcap_cr": 29507.0,
+        "promoter_pct": 67.0,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "BLUESTARCO",
+        "theme": "AI & Compute",
+        "mcap_cr": 31048.0,
+        "promoter_pct": 36.5,
+        "pledge_pct": 3.0
+      },
+      {
+        "ticker": "SCHNEIDER",
+        "theme": "Grid & Power Transmission",
+        "mcap_cr": 32945.0,
+        "promoter_pct": 75.0,
+        "pledge_pct": 1.5
+      },
+      {
+        "ticker": "LALPATHLAB",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 32985.0,
+        "promoter_pct": 53.2,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "PIIND",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 37717.0,
+        "promoter_pct": 46.1,
+        "pledge_pct": 3.1
+      },
+      {
+        "ticker": "LTTS",
+        "theme": "AI & Compute",
+        "mcap_cr": 38212.0,
+        "promoter_pct": 73.5,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "EXIDEIND",
+        "theme": "Energy Storage & BESS",
+        "mcap_cr": 41234.0,
+        "promoter_pct": 46.0,
+        "pledge_pct": 4.1
+      },
+      {
+        "ticker": "NAVINFLUOR",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 42542.0,
+        "promoter_pct": 27.1,
+        "pledge_pct": 10.0
+      },
+      {
+        "ticker": "VOLTAS",
+        "theme": "AI & Compute",
+        "mcap_cr": 42641.0,
+        "promoter_pct": 30.3,
+        "pledge_pct": 2.6
+      },
+      {
+        "ticker": "ASTRAL",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 42769.0,
+        "promoter_pct": 54.2,
+        "pledge_pct": 1.4
+      },
+      {
+        "ticker": "SUPREMEIND",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 44523.0,
+        "promoter_pct": 49.0,
+        "pledge_pct": 3.1
+      },
+      {
+        "ticker": "PREMIERENE",
+        "theme": "Solar & Renewables",
+        "mcap_cr": 46802.0,
+        "promoter_pct": 58.5,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "THERMAX",
+        "theme": "Water Treatment & Infrastructure",
+        "mcap_cr": 47669.0,
+        "promoter_pct": 67.4,
+        "pledge_pct": 0.7
+      },
+      {
+        "ticker": "GLAND",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 48942.0,
+        "promoter_pct": 51.8,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "TATACOMM",
+        "theme": "AI & Compute",
+        "mcap_cr": 50097.0,
+        "promoter_pct": 58.9,
+        "pledge_pct": 2.2
+      },
+      {
+        "ticker": "BDL",
+        "theme": "Defence & Space Technology",
+        "mcap_cr": 50314.0,
+        "promoter_pct": 74.9,
+        "pledge_pct": null
+      },
+      {
+        "ticker": "FLUOROCHEM",
+        "theme": "Specialty Chemicals & Advanced Materials",
+        "mcap_cr": 51725.0,
+        "promoter_pct": 61.4,
+        "pledge_pct": 12.8
+      },
+      {
+        "ticker": "KEI",
+        "theme": "Grid & Power Transmission",
+        "mcap_cr": 54970.0,
+        "promoter_pct": 35.0,
+        "pledge_pct": 4.0
+      },
+      {
+        "ticker": "FORTIS",
+        "theme": "Innovative Health & Life Sciences",
+        "mcap_cr": 68248.0,
+        "promoter_pct": 31.2,
+        "pledge_pct": 4.5
+      },
+      {
+        "ticker": "APARINDS",
+        "theme": "Grid & Power Transmission",
+        "mcap_cr": 69187.0,
+        "promoter_pct": 57.8,
+        "pledge_pct": 2.0
       }
     ],
     "bands": {

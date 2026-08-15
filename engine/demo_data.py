@@ -24,6 +24,10 @@ from engine.features.trends import (
 from engine.storage import db
 from engine.universe.theme_graph import load_theme_graph
 
+# How many cleared theme companies the payload carries. The screen states the
+# true total alongside, so a cap can never read as a finding.
+CLEARED_THEME_LIMIT = 60
+
 
 def build() -> dict:
     graph = load_theme_graph()
@@ -258,7 +262,7 @@ def gate_payload() -> dict:
                    round(o.promoter_pct, 1) AS promoter_pct,
                    round(o.promoter_pledge_pct, 1) AS pledge_pct
               FROM per JOIN securities s ON s.security_id = per.security_id
-              LEFT JOIN ownership_pit o ON o.security_id = per.security_id
+              LEFT JOIN ownership_latest o ON o.security_id = per.security_id
              WHERE crit_fail = 0 AND any_fail = 0 AND crit_unknown = 0
              ORDER BY s.market_cap
         """, [as_of]).df()
@@ -271,6 +275,13 @@ def gate_payload() -> dict:
             "as_of": str(as_of)[:10],
             "verdicts": {r.verdict: int(r.n) for r in verdicts.itertuples()},
             "cleared_total": int(len(cleared)),
+            # The list is capped so the payload stays small, but the TOTAL is
+            # sent alongside it. The screen used to label the list with its own
+            # length, so a cap of 24 over 45 cleared theme companies read as
+            # "24 in your themes" -- the app quietly understating its own
+            # findings, which is the one direction a research tool must not err.
+            "cleared_theme_total": int(len(in_theme)),
+            "cleared_theme_shown": int(min(len(in_theme), CLEARED_THEME_LIMIT)),
             "cleared_theme": [
                 {
                     "ticker": r.ticker.replace(".NS", ""),
@@ -279,7 +290,7 @@ def gate_payload() -> dict:
                     "promoter_pct": None if pd.isna(r.promoter_pct) else float(r.promoter_pct),
                     "pledge_pct": None if pd.isna(r.pledge_pct) else float(r.pledge_pct),
                 }
-                for r in in_theme.head(24).itertuples()
+                for r in in_theme.head(CLEARED_THEME_LIMIT).itertuples()
             ],
             "bands": band_payload(con, as_of, theme_of),
             "companies": int(con.execute(

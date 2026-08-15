@@ -484,7 +484,12 @@ function render(d) {
     ].map(([k,l,c]) => `<div class="v ${c}"><b>${v[k]||0}</b><span>${l}</span></div>`).join("");
 
     const cleared = g.cleared_theme || [];
-    document.getElementById("cleared-n").textContent = `${cleared.length} in your themes`;
+    // Label the TOTAL, not the length of a truncated list. Saying "24 in your
+    // themes" when 45 cleared understated the app's own findings.
+    const clearedTotal = g.cleared_theme_total ?? cleared.length;
+    document.getElementById("cleared-n").textContent = clearedTotal > cleared.length
+      ? `${cleared.length} of ${clearedTotal} in your themes`
+      : `${clearedTotal} in your themes`;
     document.getElementById("cleared").innerHTML = cleared.map(c => `
       <div class="trow tap" data-ticker="${c.ticker}"><div><div class="tname">${c.ticker} ›</div>
       <div class="tmeta">${c.theme}</div></div>

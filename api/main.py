@@ -94,7 +94,7 @@ def screen(verdict: str | None = None, theme: str | None = None,
           JOIN securities s ON s.security_id = per.security_id
           LEFT JOIN scores sc ON sc.security_id = per.security_id
                AND sc.as_of_date = (SELECT max(as_of_date) FROM scores)
-          LEFT JOIN ownership_pit o ON o.security_id = per.security_id
+          LEFT JOIN ownership_latest o ON o.security_id = per.security_id
          ORDER BY s.market_cap
     """)
 

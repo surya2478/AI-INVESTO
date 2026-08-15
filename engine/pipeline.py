@@ -578,7 +578,7 @@ def ingest_pledge(
 
         worst = con.execute("""
             SELECT s.ticker, o.promoter_pct, o.promoter_pledge_pct, o.quarter_end
-              FROM ownership_pit o JOIN securities s ON s.security_id = o.security_id
+              FROM ownership_latest o JOIN securities s ON s.security_id = o.security_id
              WHERE o.promoter_pledge_pct IS NOT NULL
              ORDER BY o.promoter_pledge_pct DESC LIMIT 12
         """).df()
