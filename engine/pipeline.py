@@ -1075,7 +1075,17 @@ def folio_backup(
                   f"{result['bytes'] / 1e6:.1f} MB"
                   + (f" · {result['pruned']} older removed" if result["pruned"] else "")
                   + "[/dim]")
-    if "backups" in str(result["path"]) and "AI-Investo" in str(result["path"]):
+    # Is the copy inside the project itself? Compare paths rather than matching
+    # on names: the first version looked for "AI-Investo" in the string and
+    # warned about C:\Users\...\OneDrive\AI-Investo-backups, which is exactly
+    # the destination it was meant to encourage.
+    from pathlib import Path as _Path
+    try:
+        inside_project = result["path"].resolve().is_relative_to(
+            _Path(settings.DATA_DIR).resolve().parent)
+    except (OSError, ValueError):
+        inside_project = False
+    if inside_project:
         console.print("[yellow]This is still on the same disk as the original.[/yellow] "
                       "[dim]investo folio backup --to <synced folder>[/dim]")
 
