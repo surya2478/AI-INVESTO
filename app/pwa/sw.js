@@ -5,7 +5,12 @@
  * response is only served when the network actually fails — and the app stamps
  * the response with its age so you can see what you are looking at.
  */
-const SHELL = "investo-shell-v1";
+// v2 because v1 was never bumped and the shell is cached FOREVER: index.html
+// went in on first install and every UI change since has been invisible to
+// anyone who already had the app open. That is the bug this file caused, and
+// the version bump only fixes it once -- the strategy change below is what stops
+// it happening again.
+const SHELL = "investo-shell-v2";
 // v2 deliberately abandons v1: it may hold API errors cached as though they were
 // data, and there is no way to tell which entries those are after the fact.
 // `activate` deletes every cache it does not recognise, so the bump purges them.
@@ -60,6 +65,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // THE DOCUMENT IS NETWORK-FIRST. Cache-first on index.html means a browser
+  // that installed the app once shows that version forever: the code changes,
+  // the file on disk changes, and the screen does not. Offline still works —
+  // the cached copy is the fallback, not the default — and the cache is
+  // refreshed on every successful load so the fallback stays current.
+  const wantsDocument = request.mode === "navigate" ||
+    url.pathname === "/" || url.pathname.endsWith(".html");
+
+  if (wantsDocument) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(SHELL).then((c) => c.put(request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((hit) => hit || caches.match("/")))
+    );
+    return;
+  }
+
+  // Everything else — icon, manifest — is genuinely static and stays cache-first.
   event.respondWith(
     caches.match(request).then((hit) => hit || fetch(request))
   );
