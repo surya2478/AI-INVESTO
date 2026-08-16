@@ -26,3 +26,18 @@ AI-Investo nightly run — 2026-08-16 08:55:46
 ==============================================================
 9/10 stages ok — FAILED: publish snapshot
 
+AI-Investo nightly run — 2026-08-16 09:58:33
+==============================================================
+[ok  ] universe                  6.0s  2126 listings, 6 indices, 139 index levels, 156 ASM flags, 2 flow rows
+[ok  ] bse identity              3.4s  2027 securities matched to BSE scrip codes
+[ok  ] prices                   86.0s  6,068 bars from 2026-08-06 across 868 symbols
+[ok  ] filings recent          252.8s  2922 announcements 2026-07-28..2026-08-15, 1524 without a parseable period
+[ok  ] filings backfill         19.8s  216 announcements, cursor now 2026-02-24, ~28 windows to 2024-10-01
+[ok  ] gates                   113.6s  210 rejected, 208 flagged, 51 unvetted, 293 cleared
+[ok  ] score                    44.1s  760 scored, mean coverage 79%
+[ok  ] thesis health             0.3s  amber 1 · green 1
+[ok  ] today payload            12.3s  14 themes as of 2026-08-16, 0 with India trailing
+[ok  ] publish snapshot          0.2s  investo_serve.duckdb, 277 MB
+==============================================================
+10/10 stages ok
+

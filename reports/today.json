@@ -4506,13 +4506,6 @@
         "total": 762
       },
       {
-        "gate_name": "related_party",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 762.0,
-        "total": 762
-      },
-      {
         "gate_name": "receivable_days",
         "passed": 0.0,
         "failed": 0.0,
@@ -4521,6 +4514,13 @@
       },
       {
         "gate_name": "contingent_liabilities",
+        "passed": 0.0,
+        "failed": 0.0,
+        "unknown": 762.0,
+        "total": 762
+      },
+      {
+        "gate_name": "related_party",
         "passed": 0.0,
         "failed": 0.0,
         "unknown": 762.0,
