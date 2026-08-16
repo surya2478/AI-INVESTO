@@ -3880,8 +3880,8 @@
     "verdicts": {
       "FLAGGED": 208,
       "UNVETTED": 51,
-      "CLEARED": 293,
-      "REJECTED": 210
+      "REJECTED": 210,
+      "CLEARED": 293
     },
     "cleared_total": 293,
     "cleared_theme_total": 39,
@@ -4172,6 +4172,7 @@
           "avg_growth": 56.725984187841625,
           "avg_quality": 58.69758485037581,
           "avg_momentum": 58.76527908492,
+          "avg_coverage": 99.62962962962962,
           "names": [
             {
               "ticker": "KRSNAA",
@@ -4267,6 +4268,7 @@
           "avg_growth": 44.17708537379595,
           "avg_quality": 56.67741133390343,
           "avg_momentum": 51.920325385177335,
+          "avg_coverage": 100.0,
           "names": [
             {
               "ticker": "FINPIPE",
@@ -4355,6 +4357,7 @@
           "avg_growth": 32.078622009917616,
           "avg_quality": 48.57958437784576,
           "avg_momentum": 29.344836803679925,
+          "avg_coverage": 97.6923076923077,
           "names": [
             {
               "ticker": "AWHCL",
@@ -4503,6 +4506,13 @@
         "total": 762
       },
       {
+        "gate_name": "related_party",
+        "passed": 0.0,
+        "failed": 0.0,
+        "unknown": 762.0,
+        "total": 762
+      },
+      {
         "gate_name": "receivable_days",
         "passed": 0.0,
         "failed": 0.0,
@@ -4511,13 +4521,6 @@
       },
       {
         "gate_name": "contingent_liabilities",
-        "passed": 0.0,
-        "failed": 0.0,
-        "unknown": 762.0,
-        "total": 762
-      },
-      {
-        "gate_name": "related_party",
         "passed": 0.0,
         "failed": 0.0,
         "unknown": 762.0,

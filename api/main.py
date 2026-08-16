@@ -125,7 +125,7 @@ def screen(verdict: str | None = None, theme: str | None = None,
                CASE WHEN crit_fail=1 THEN 'REJECTED' WHEN any_fail=1 THEN 'FLAGGED'
                     WHEN crit_unknown=1 THEN 'UNVETTED' ELSE 'CLEARED' END AS verdict,
                sc.gem_score, json_extract_string(sc.explain,'$.band') AS band,
-               sc.g_score, sc.q_score, sc.m_score, sc.t_score,
+               sc.g_score, sc.q_score, sc.m_score, sc.t_score, sc.coverage,
                round(o.promoter_pct,1) AS promoter_pct,
                round(o.promoter_pledge_pct,1) AS pledge_pct
           FROM per
@@ -169,9 +169,15 @@ def company(ticker: str) -> dict:
          ORDER BY CASE g.status WHEN 'FAIL' THEN 0 WHEN 'UNKNOWN' THEN 1 ELSE 2 END
     """, [symbol])
 
+    # Coverage travels with every pillar. A quality score of 52 on 49% coverage
+    # and one on 98% are the same number and not the same statement, and the
+    # company page is where that difference changes a decision.
     pillars = _read("""
         SELECT sc.gem_score, json_extract_string(sc.explain,'$.band') AS band,
-               sc.t_score, sc.g_score, sc.q_score, sc.d_score, sc.v_score, sc.m_score
+               sc.t_score, sc.g_score, sc.q_score, sc.d_score, sc.v_score, sc.m_score,
+               sc.coverage,
+               sc.t_coverage, sc.g_coverage, sc.q_coverage,
+               sc.d_coverage, sc.v_coverage, sc.m_coverage
           FROM scores sc JOIN securities s ON s.security_id = sc.security_id
          WHERE s.ticker = ? AND sc.as_of_date = (SELECT max(as_of_date) FROM scores)
     """, [symbol])

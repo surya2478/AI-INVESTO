@@ -312,6 +312,18 @@ CREATE TABLE IF NOT EXISTS scores (
 -- claim, and before this column existed there was no way to tell them apart.
 ALTER TABLE scores ADD COLUMN IF NOT EXISTS coverage DOUBLE;
 
+-- Coverage PER PILLAR, because the blended figure cannot say which one is
+-- hollow. A company at 45% overall might have a fully-evidenced growth pillar
+-- and an empty quality one, or the reverse, and those are different companies.
+-- Without these a quality score of 52 on 49% coverage renders identically to
+-- one on 98% -- the same number, and not remotely the same statement.
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS t_coverage DOUBLE;
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS g_coverage DOUBLE;
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS q_coverage DOUBLE;
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS d_coverage DOUBLE;
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS v_coverage DOUBLE;
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS m_coverage DOUBLE;
+
 -- Cursors for work that spans many nights. The filings backfill walks BSE in
 -- small windows because the exchange throttles sustained pagination, so its
 -- progress has to survive across runs.

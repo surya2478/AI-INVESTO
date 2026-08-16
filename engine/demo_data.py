@@ -144,7 +144,8 @@ def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
     """
     scored = con.execute("""
         SELECT s.ticker, sc.gem_score, sc.g_score, sc.q_score, sc.m_score,
-               sc.t_score, json_extract_string(sc.explain, '$.band') AS band,
+               sc.t_score, sc.coverage,
+               json_extract_string(sc.explain, '$.band') AS band,
                round(s.market_cap/1e7, 0) AS mcap_cr
           FROM scores sc JOIN securities s ON s.security_id = sc.security_id
          WHERE sc.as_of_date = (SELECT max(as_of_date) FROM scores)
@@ -189,6 +190,10 @@ def band_payload(con, as_of, theme_of: dict[str, str]) -> dict:
             "avg_growth": float(sub["g_score"].mean()),
             "avg_quality": float(sub["q_score"].mean()),
             "avg_momentum": float(sub["m_score"].mean()),
+            # How much of the band's scores is evidence rather than the neutral
+            # default. A band average built on 40% coverage is mostly the default.
+            "avg_coverage": (None if sub["coverage"].isna().all()
+                             else float(sub["coverage"].mean())),
             "names": [
                 {
                     "ticker": r.ticker.replace(".NS", ""),

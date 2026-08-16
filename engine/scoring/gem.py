@@ -554,6 +554,9 @@ def store_scores(con, frame: pd.DataFrame, as_of: dt.date) -> pd.DataFrame:
         "gates_passed": None, "gates_failed": None,
         # `explain` is a JSON column; a bare string is rejected.
         "explain": frame["band"].astype(str).map(lambda b: f'{{"band":"{b}"}}'),
+        # Per pillar, so a hollow pillar can be shown as hollow rather than
+        # hiding behind a blended average.
+        **{f"{pillar[0]}_coverage": frame[f"{pillar}_coverage"] for pillar in PILLARS},
     })
 
     con.register("staged_scores", staged)
@@ -562,10 +565,12 @@ def store_scores(con, frame: pd.DataFrame, as_of: dt.date) -> pd.DataFrame:
         INSERT INTO scores (security_id, as_of_date, theme_id, t_score, g_score,
                             q_score, d_score, v_score, m_score, gem_score,
                             coverage, rank_overall, gates_passed, gates_failed,
-                            explain)
+                            explain, t_coverage, g_coverage, q_coverage,
+                            d_coverage, v_coverage, m_coverage)
         SELECT security_id, as_of_date, theme_id, t_score, g_score, q_score,
                d_score, v_score, m_score, gem_score, coverage, rank_overall,
-               gates_passed, gates_failed, explain
+               gates_passed, gates_failed, explain, t_coverage, g_coverage,
+               q_coverage, d_coverage, v_coverage, m_coverage
           FROM staged_scores
     """)
     con.unregister("staged_scores")

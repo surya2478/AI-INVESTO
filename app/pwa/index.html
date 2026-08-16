@@ -293,16 +293,27 @@ function openCompany(ticker) {
     // Pillars, labelled as bands rather than a rank — the backtest said the
     // composite does not order companies.
     const pil = d.pillars;
+    // Every pillar carries how much of it is EVIDENCE rather than the neutral
+    // default it falls back to. Coverage runs 33% to 100% across the universe,
+    // so a pillar reading 52 might be a measurement or might be nothing at all,
+    // and the bar alone cannot tell you which. A thinly-covered pillar is drawn
+    // faded, because that is what it is.
     const pillarHtml = pil ? `
-      <div class="card"><div class="tag">Score pillars — ${pil.band || "unbanded"} third</div>
+      <div class="card"><div class="tag">Score pillars${
+          pil.coverage != null ? ` — ${pil.coverage.toFixed(0)}% evidence` : ""}</div>
         <div style="margin-top:8px">${Object.keys(PILLAR_LABELS).map(k => {
           const v = pil[k];
-          return `<div class="pillar"><div class="pl">${PILLAR_LABELS[k]}</div>
+          const cov = pil[k.replace("_score", "_coverage")];
+          const thin = cov != null && cov < 60;
+          return `<div class="pillar" style="opacity:${thin ? 0.55 : 1}">
+            <div class="pl">${PILLAR_LABELS[k]}</div>
             <div class="bar"><i style="width:${v == null ? 0 : Math.max(0, Math.min(100, v))}%"></i></div>
-            <div class="val">${v == null ? "—" : v.toFixed(0)}</div></div>`;
+            <div class="val">${v == null ? "—" : v.toFixed(0)}<div style="font-size:8.5px;color:var(--muted)">${
+              cov == null ? "" : cov.toFixed(0) + "%"}</div></div></div>`;
         }).join("")}</div>
         <p style="margin-top:8px;font-size:11px;color:var(--muted)">Percentile within
-        the universe. Used to group, not to rank.</p>
+        the universe, with the share of each pillar that rests on evidence rather
+        than the neutral 50. Used to group, not to rank.</p>
       </div>` : "";
 
     // Gates first among the detail: the reason a name was rejected is the most
@@ -552,7 +563,8 @@ function render(d) {
     ? (B.bands || []).map(b => `
         <div class="bandbox ${b.band.toLowerCase()}">
           <div class="bh"><b>${b.score_lo != null ? range(b) : b.band}</b><span>${b.count} cleared</span></div>
-          <div class="bs">growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} · momentum ${b.avg_momentum.toFixed(0)}</div>
+          <div class="bs">growth ${b.avg_growth.toFixed(0)} · quality ${b.avg_quality.toFixed(0)} · momentum ${b.avg_momentum.toFixed(0)}${
+            b.avg_coverage == null ? "" : ` · ${b.avg_coverage.toFixed(0)}% evidence`}</div>
           <div class="chips">${b.names.map(n =>
             `<span class="cn tap" data-ticker="${n.ticker}">${n.ticker} <span>${cr(n.mcap_cr)}</span></span>`).join("")}</div>
         </div>`).join("")
