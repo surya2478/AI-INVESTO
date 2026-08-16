@@ -325,13 +325,38 @@ CRITICAL = {"surveillance", "cash_conversion", "serial_dilution", "sustained_los
 
 
 # ----------------------------------------------------------------- execution
-def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateContext:
+def _market_cap_asof(con, security_id: int, as_of: dt.date) -> float | None:
+    """Close on the date times the share count published by then, or None.
+
+    None rather than a fallback: the band gate reports UNKNOWN on a missing cap,
+    which is the honest verdict. Substituting today's figure would let a company
+    pass a size band it was nowhere near at the time.
+    """
+    row = con.execute("""
+        WITH px AS (
+            SELECT adj_close FROM ohlcv
+             WHERE security_id = ? AND date <= ?
+             ORDER BY date DESC LIMIT 1
+        ), sh AS (
+            SELECT value FROM fundamentals_pit
+             WHERE security_id = ? AND metric = 'share_count'
+               AND value > 0 AND filing_date <= ?
+             ORDER BY period_end DESC, filing_date DESC LIMIT 1
+        )
+        SELECT (SELECT adj_close FROM px) * (SELECT value FROM sh)
+    """, [security_id, as_of, security_id, as_of]).fetchone()
+    return float(row[0]) if row and row[0] else None
+
+
+def build_context(con, security_id: int, ticker: str, as_of: dt.date,
+                  include_non_pit: bool = True) -> GateContext:
     # include_non_pit=True: gates screen what is true TODAY, so Yahoo's
     # current-value figures are exactly the right input. The Stage 3 backtest
     # must call fundamentals_asof with the default and see filing-dated rows
-    # only -- that is the whole reason the two are separated.
+    # only -- that is the whole reason the two are separated. This is the
+    # parameter that makes that separation reachable rather than only stated.
     facts = db.fundamentals_asof(con, as_of, security_ids=[security_id],
-                                 periods=16, include_non_pit=True)
+                                 periods=16, include_non_pit=include_non_pit)
     quarterly = annual_frame = pd.DataFrame()
     if not facts.empty:
         q = facts[facts.period_type == "Q"]
@@ -358,31 +383,48 @@ def build_context(con, security_id: int, ticker: str, as_of: dt.date) -> GateCon
         "SELECT market_cap, coalesce(industry, '') FROM securities WHERE security_id = ?",
         [security_id],
     ).fetchone()
-    cap = (profile[0],) if profile else None
+    market_cap = float(profile[0]) if profile and profile[0] else None
     industry = profile[1] if profile else ""
+
+    if not include_non_pit:
+        # `securities.market_cap` is today's figure. Screening today that is
+        # correct; judging a 2019 company by its 2026 size is the same
+        # look-ahead that inverted the first backtest, and it decides the
+        # market-cap band gate outright. Reconstruct it instead.
+        market_cap = _market_cap_asof(con, security_id, as_of)
 
     ownership = con.execute("""
         SELECT quarter_end, filing_date, promoter_pct, promoter_pledge_pct, public_pct
           FROM ownership_pit
-         WHERE security_id = ? AND filing_date <= ?
-    """, [security_id, as_of]).df()
+         WHERE security_id = ? AND filing_date <= ?{}
+    """.format("" if include_non_pit else " AND coalesce(is_pit, TRUE)"),
+        [security_id, as_of]).df()
 
     return GateContext(
         security_id=security_id, ticker=ticker, as_of=as_of,
         quarterly=quarterly, annual_frame=annual_frame, prices=prices, events=events,
-        market_cap=float(cap[0]) if cap and cap[0] else None,
+        market_cap=market_cap,
         ownership=ownership,
         industry=industry,
     )
 
 
-def evaluate(con, security_id: int, ticker: str, as_of: dt.date) -> list[GateResult]:
-    ctx = build_context(con, security_id, ticker, as_of)
+def evaluate(con, security_id: int, ticker: str, as_of: dt.date,
+             include_non_pit: bool = True) -> list[GateResult]:
+    ctx = build_context(con, security_id, ticker, as_of, include_non_pit=include_non_pit)
     return [gate(ctx) for gate in GATES]
 
 
-def run_gates(con, as_of: dt.date | None = None, limit: int = 0) -> pd.DataFrame:
-    """Evaluate every gate for every priced security and persist the results."""
+def run_gates(con, as_of: dt.date | None = None, limit: int = 0,
+              include_non_pit: bool = True, persist: bool = True) -> pd.DataFrame:
+    """Evaluate every gate for every priced security.
+
+    `include_non_pit=False` makes the gates answer "what did this look like on
+    that date" instead of "what is true now", which is what a backtest of the
+    screen requires. `persist=False` keeps a historical evaluation out of
+    `gate_results`, which holds the CURRENT screen and should not be
+    back-dated by an experiment.
+    """
     as_of = as_of or dt.date.today()
 
     query = """
@@ -397,7 +439,8 @@ def run_gates(con, as_of: dt.date | None = None, limit: int = 0) -> pd.DataFrame
 
     rows = []
     for record in targets.itertuples():
-        for result in evaluate(con, record.security_id, record.ticker, as_of):
+        for result in evaluate(con, record.security_id, record.ticker, as_of,
+                               include_non_pit=include_non_pit):
             rows.append({
                 "security_id": record.security_id,
                 "ticker": record.ticker,
@@ -411,7 +454,7 @@ def run_gates(con, as_of: dt.date | None = None, limit: int = 0) -> pd.DataFrame
             })
 
     frame = pd.DataFrame(rows)
-    if frame.empty:
+    if frame.empty or not persist:
         return frame
 
     con.register("staged_gates", frame[[

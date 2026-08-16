@@ -488,6 +488,78 @@ over several days, it ignores borrow and short costs entirely (the spread is
 long-short on paper and only the long leg is investable here), and its impact
 coefficient of 1.0 is a convention, not a calibration to Indian data.
 
+## The gates — INCONCLUSIVE, and the reason is structural
+
+The score has been measured repeatedly. The gates never had been, and they are
+what the app mostly does: 762 companies sorted into REJECTED / FLAGGED /
+UNVETTED / CLEARED every night. They were evaluated point-in-time at each
+rebalance date — `include_non_pit=False`, and market cap reconstructed rather
+than read from today's `securities` — then compared to 12-month forward returns.
+
+**The test cannot answer the question it was built to answer.** Recorded here so
+nobody runs it again expecting one.
+
+### Why it cannot
+
+**The gates exist to avoid permanent loss, and every permanent loss is missing
+from the sample.** The universe is today's index membership; companies that
+failed, delisted or were suspended are absent. That is exactly the population
+`surveillance`, `sustained_losses` and `promoter_pledge` are built to catch. A
+gate that excluded ten speculative names where nine ran and one went to zero
+scores terribly here, because the zero was removed from the data before the test
+began.
+
+**And CLEARED barely exists.** It requires no critical gate to be UNKNOWN, and
+`cash_conversion` needs annual cash flow, which in point-in-time form starts at
+FY2022. Before 2024 every company is UNVETTED by construction:
+
+| Date | CLEARED | FLAGGED | REJECTED | UNVETTED |
+|---|---|---|---|---|
+| 2018–2023 | **0** | 52–108 | 0–96 | 433–532 |
+| 2024-07-01 | 278 | 115 | 148 | 179 |
+| 2025-07-01 | 288 | 136 | 141 | 196 |
+
+So the verdict comparison has **two usable dates**:
+
+| Date | CLEARED | REJECTED | UNVETTED |
+|---|---|---|---|
+| 2024-07-01 | 9.1% | 6.4% | **12.2%** |
+| 2025-07-01 | 2.1% | **14.3%** | 12.7% |
+
+CLEARED lost to UNVETTED twice and to REJECTED once. Two observations settle
+nothing.
+
+Do NOT read the pooled figure (CLEARED 5.5% against REJECTED 34.0%). CLEARED
+exists only in 2024–25, which were flat; REJECTED is dominated by 2020–23, which
+included a 200% rebound year. That compares regimes, not verdicts, and pooling
+across dates when verdict availability varies by date is a mistake in the
+analysis rather than a finding about the gates.
+
+### Per gate, which has more data
+
+| Gate | Periods | Gap (fail − pass) | Reading |
+|---|---|---|---|
+| `serial_dilution` | 6 | **−4.1** | fired correctly, weakly |
+| `cash_conversion` | 2 | −1.2 | noise |
+| `revenue_collapse` | 2 | −0.5 | noise |
+| `interest_coverage` | 3 | +13.5 | fired against outperformers |
+| `market_cap_band` | 8 | +16.7 | fired against outperformers |
+| `sustained_losses` | 3 | +18.5 | fired against outperformers |
+| `liquidity` | 6 | **+82.5** | fired hard against outperformers |
+
+Only `serial_dilution` fired in the right direction. Loss-makers outperformed by
+18 points and illiquid names returned 121% against 39% — but all of that is
+gross, survivorship-filtered, and measured over a rebound. It is what a junk
+rally looks like in a sample with the failures deleted.
+
+### The one thing this does support
+
+**The gates are not a return-enhancing filter.** If CLEARED is being read as
+"better", that is not supported by anything here. Whether they work as a
+loss-avoidance filter — their actual design intent — is untestable without
+delisted-company data, which is the same wall as the survivorship bias above and
+the pre-FY2023 balance sheet.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so
