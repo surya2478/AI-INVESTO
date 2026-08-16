@@ -337,6 +337,21 @@ def stage_snapshot() -> str:
     return f"{path.name}, {path.stat().st_size / 1e6:.0f} MB"
 
 
+def stage_backup() -> str:
+    """Copy the portfolio somewhere safe, every night, without being remembered.
+
+    A backup that depends on someone running a command is a backup that exists
+    until the week they forget. This is the only file in the project that cannot
+    be rebuilt from providers.
+    """
+    from engine.portfolio import book
+
+    result = book.backup()
+    if not result["ok"]:
+        raise RuntimeError(result["reason"])
+    return f"{result['rows']} rows verified, {result['path'].name}"
+
+
 # ----------------------------------------------------------------- entrypoint
 def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
     report = NightlyReport(started=dt.datetime.now())
@@ -366,14 +381,17 @@ def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
     finally:
         con.close()
 
-    # Snapshot last and outside the connection, for the reason in stage_snapshot.
+    # Both of these copy FILES, so they run outside the connection for the same
+    # reason: Windows will not read a file DuckDB holds open for writing.
     _stage(report, "publish snapshot", stage_snapshot)
+    _stage(report, "backup portfolio", stage_backup)
 
     # Record that stage and refresh the copy, so the snapshot the app reads
     # contains its own result rather than stopping one row short.
     recorder = db.connect()
     try:
-        _record_stage(recorder, run_id, report.started, report.stages[-1])
+        for result in report.stages[-2:]:
+            _record_stage(recorder, run_id, report.started, result)
     finally:
         recorder.close()
     db.publish_snapshot()

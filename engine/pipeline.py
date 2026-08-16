@@ -1043,6 +1043,43 @@ def folio_claim(
         con.close()
 
 
+@folio_app.command("backup")
+def folio_backup(
+    to: str = typer.Option("", "--to", help="Folder to back up into, remembered after"),
+    keep: int = typer.Option(10, help="How many to retain (0 = keep all)"),
+) -> None:
+    """Copy the portfolio somewhere safe, and verify the copy opens.
+
+    Everything in the analytics store rebuilds from providers in an afternoon.
+    Nothing in here rebuilds at all — positions, theses, claims, and the history
+    of what was true when. Point --to at a synced folder; a second copy on the
+    same disk survives a mistake, not a disk failure.
+    """
+    from engine.portfolio import book
+
+    if to:
+        con = book.connect()
+        try:
+            book.set_backup_destination(con, to)
+        finally:
+            con.close()
+
+    result = book.backup(keep=keep)
+    if not result["ok"]:
+        console.print(f"[red]backup failed[/red] — {result['reason']}")
+        raise typer.Exit(1)
+
+    console.print(f"[green]backed up[/green] {result['path']}")
+    console.print(f"[dim]{result['rows']} rows verified across "
+                  f"{len(result['tables'])} tables · "
+                  f"{result['bytes'] / 1e6:.1f} MB"
+                  + (f" · {result['pruned']} older removed" if result["pruned"] else "")
+                  + "[/dim]")
+    if "backups" in str(result["path"]) and "AI-Investo" in str(result["path"]):
+        console.print("[yellow]This is still on the same disk as the original.[/yellow] "
+                      "[dim]investo folio backup --to <synced folder>[/dim]")
+
+
 # ------------------------------------------------------------------ coverage
 @app.command()
 def coverage() -> None:

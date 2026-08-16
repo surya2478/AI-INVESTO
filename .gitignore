@@ -26,3 +26,5 @@ Thumbs.db
 # Portfolio state is yours and irreplaceable - back it up, do not commit it.
 data/db/portfolio.duckdb
 data/db/portfolio.duckdb.wal
+# Its backups are the same irreplaceable data, and just as unwelcome in git.
+data/backups/

@@ -23,6 +23,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import duckdb
@@ -53,6 +54,111 @@ LADDER = [
 
 def portfolio_path() -> Path:
     return settings.DATA_DIR / "db" / "portfolio.duckdb"
+
+
+# Tables whose row counts are compared against the copy. A backup that exists
+# but cannot be opened is worse than none, because it stops you looking for one.
+BACKED_UP_TABLES = ("positions", "tranches", "journal", "thesis_claims",
+                    "thesis_claim_checks", "thesis_health")
+BACKUP_SETTING = "backup_dir"
+
+
+def backup_destination(con=None) -> Path:
+    """Where backups go: the remembered folder, else one beside the data dir.
+
+    The default is honest but weak -- a second copy on the same disk survives a
+    mistake and not a disk failure. `--to` records a real destination in
+    folio_settings so it is chosen once rather than remembered every time.
+    """
+    if con is not None:
+        row = con.execute("SELECT value FROM folio_settings WHERE key = ?",
+                          [BACKUP_SETTING]).fetchone()
+        if row and row[0]:
+            return Path(row[0])
+    return settings.DATA_DIR / "backups"
+
+
+def backup(destination: Path | None = None, keep: int = 10) -> dict:
+    """Copy the portfolio to a timestamped file, and prove the copy is readable.
+
+    TAKES NO CONNECTION, deliberately. DuckDB holds the file open and Windows
+    refuses to read a file a writer has open -- which is precisely how the
+    analytics snapshot failed on its first unattended run. Callers must have
+    closed their write connection first.
+
+    Everything in the analytics store rebuilds from providers in an afternoon.
+    Nothing in here rebuilds at all: it is the positions, the theses, the claims
+    and the history of what was true when. The schema has said "back it up" since
+    it was written and nothing did.
+    """
+    source = portfolio_path()
+    if not source.exists():
+        return {"ok": False, "reason": "no portfolio to back up"}
+
+    if destination is None:
+        con = connect(read_only=True)
+        try:
+            destination = backup_destination(con)
+        finally:
+            con.close()
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = destination / f"portfolio-{stamp}.duckdb"
+    shutil.copy2(source, target)
+
+    # Verify by OPENING the copy and comparing row counts, not by checking the
+    # file exists. A truncated copy has a size and a timestamp too.
+    #
+    # Opening it can raise outright -- DuckDB rejects a file that is not a
+    # database at all -- and that has to come back as a failed backup rather
+    # than a traceback, or the nightly stage dies and the bad file survives
+    # looking like a good one.
+    expected = _table_counts(source)
+    try:
+        actual = _table_counts(target)
+    except Exception as exc:  # noqa: BLE001 - any unreadable copy is a failed backup
+        target.unlink(missing_ok=True)
+        return {"ok": False, "reason": f"copy would not open: {exc}"}
+    if expected != actual:
+        target.unlink(missing_ok=True)
+        return {"ok": False, "reason": f"copy did not verify: {expected} vs {actual}"}
+
+    pruned = _prune_backups(destination, keep)
+    return {"ok": True, "path": target, "rows": sum(expected.values()),
+            "tables": expected, "pruned": pruned,
+            "bytes": target.stat().st_size}
+
+
+def _table_counts(path: Path) -> dict[str, int]:
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        return {
+            table: int(con.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
+            for table in BACKED_UP_TABLES
+        }
+    finally:
+        con.close()
+
+
+def _prune_backups(destination: Path, keep: int) -> int:
+    """Keep the newest `keep`, delete the rest. Zero means keep everything."""
+    if keep <= 0:
+        return 0
+    existing = sorted(destination.glob("portfolio-*.duckdb"),
+                      key=lambda p: p.name, reverse=True)
+    for old in existing[keep:]:
+        old.unlink(missing_ok=True)
+    return max(0, len(existing) - keep)
+
+
+def set_backup_destination(con, path: str) -> None:
+    """Remember where backups go, so it is chosen once."""
+    con.execute("""
+        INSERT INTO folio_settings (key, value) VALUES (?, ?)
+        ON CONFLICT (key) DO UPDATE SET value = excluded.value
+    """, [BACKUP_SETTING, str(Path(path).expanduser())])
 
 
 def connect(read_only: bool = False) -> duckdb.DuckDBPyConnection:
