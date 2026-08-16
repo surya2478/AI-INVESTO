@@ -163,7 +163,7 @@
 <section id="view-today">
   <div class="band-label"><span>Market pulse</span></div>
   <div class="pulse" id="pulse"></div>
-  <div class="band-label"><span>Unusual divergence</span><span>untested signal</span></div>
+  <div class="band-label"><span>Unusual divergence</span><span>does not predict catch-up</span></div>
   <div id="attention"></div>
   <div class="band-label"><span>Screening</span><span id="screen-count"></span></div>
   <div class="verdicts" id="verdicts"></div>
@@ -525,8 +525,9 @@ function render(d) {
       focus.divergence?.state === "INDIA_TRAILING" ? "India trailing its global leg" : "Theme in focus"}</div>
     <h3>${focus.name}</h3><p>${focus.divergence?.text || ""}</p>
     <p style="margin-top:8px;font-size:11px;color:var(--muted)">
-      Divergence is measured, not validated: nobody has tested whether a gap this
-      wide predicts India catching up. Treat it as something to explain, not a signal.</p></div>` : "";
+      Tested over 14 themes and 8,094 theme-weeks: a gap this wide is followed by
+      slightly WORSE returns at 1, 3 and 6 months, not a catch-up. Context for what
+      moved, not a reason to buy. See docs/BACKTEST.md.</p></div>` : "";
 
   const g = d.gates || {};
   if (g.available) {

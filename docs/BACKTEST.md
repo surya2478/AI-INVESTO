@@ -560,6 +560,47 @@ loss-avoidance filter — their actual design intent — is untestable without
 delisted-company data, which is the same wall as the survivorship bias above and
 the pre-FY2023 balance sheet.
 
+## Theme divergence — TESTED, and it does not predict catch-up
+
+The Today screen's lead callout fires when India's leg has trailed its global leg
+by more than one standard deviation while the global leg rises. It was the
+largest element on that screen from the day the app existed and had never been
+tested. This is the one validation not blocked by data: it needs only prices,
+and there are 2.3 million bars back to 2012.
+
+Weekly observations, 14 themes, 8,094 theme-weeks, signal firing on 13.2% of
+them. The z-score uses TRAILING statistics only — the live reading standardises
+against the whole history including the present, which is right for "how unusual
+is today" and would be look-ahead here. Forward returns are compared against the
+same India basket on non-signal weeks, so the theme is measured against itself.
+
+| Horizon | Signal weeks | **Independent windows** | Signal mean | Other weeks | Gap |
+|---|---|---|---|---|---|
+| 1 month | 1,065 | 266 | 2.0% | 2.7% | **−0.7 pp** |
+| 3 months | 1,049 | 81 | 5.7% | 9.1% | **−3.5 pp** |
+| 6 months | 1,001 | 39 | 16.0% | 18.0% | **−2.0 pp** |
+| 12 months | 831 | **16** | 41.3% | 40.1% | +1.2 pp |
+
+**At every horizon with enough data the gap is negative.** India trailing its
+global leg precedes slightly WORSE returns over one to six months, not the
+catch-up the callout implies. The only positive figure is at 12 months and it
+rests on **sixteen independent windows** across all fourteen themes — overlapping
+weekly observations share all but one week of a forward window, so the row counts
+overstate the information by a factor of the horizon. Sixteen is not a finding.
+
+Per theme, the 12-month gap is positive in **7 of 14** — a coin flip — and ranges
+from −25.4 pp (grid infrastructure) to +37.2 pp (solar). That spread across
+themes with the same signal is what noise looks like.
+
+### What follows
+
+The signal is a real observation about relative momentum and is not a forecast.
+It stays on the screen as context, labelled as measured rather than predictive,
+and it should not be read as a reason to buy. The honest version of the original
+lead-lag thesis is now fully answered: the legs move together only loosely, the
+gap is measurable, and a wide gap does not close on any horizon this data can
+test.
+
 ## Biases — every number above still overstates the score's skill
 
 1. **Restatement in place** (restated run only). Yahoo reports current values, so
