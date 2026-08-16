@@ -175,6 +175,64 @@ def _latest_prices(tickers: list[str], analytics_db: Path | None = None) -> dict
     return dict(zip(frame["ticker"], frame["price"]))
 
 
+# ------------------------------------------------------------- thesis claims
+def add_claim(con, ticker: str, metric: str, comparator: str, threshold: float,
+              note: str = "") -> int:
+    """Record one falsifiable assertion against the newest open position."""
+    from engine.portfolio import claims as claim_engine
+
+    if metric not in claim_engine.MEASURES:
+        raise ValueError(
+            f"unknown metric {metric!r}; the engine can measure: "
+            + ", ".join(sorted(claim_engine.MEASURES))
+        )
+    if comparator not in claim_engine.COMPARATORS:
+        raise ValueError(f"comparator must be one of {claim_engine.COMPARATORS}")
+
+    ticker = ticker.upper()
+    if not ticker.endswith(".NS"):
+        ticker += ".NS"
+    row = con.execute("""
+        SELECT position_id FROM positions
+         WHERE ticker = ? AND status = 'OPEN' ORDER BY opened_on DESC LIMIT 1
+    """, [ticker]).fetchone()
+    if not row:
+        raise ValueError(f"no open position for {ticker}")
+
+    con.execute("""
+        INSERT INTO thesis_claims (position_id, metric, comparator, threshold,
+                                   note, created_on)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, [row[0], metric, comparator, float(threshold), note or None, dt.date.today()])
+    return int(row[0])
+
+
+def claims_for(con, position_id: int) -> list:
+    """Live claims on a position, newest first. Retired ones are kept, not shown."""
+    from engine.portfolio import claims as claim_engine
+
+    frame = con.execute("""
+        SELECT claim_id, metric, comparator, threshold, coalesce(note, '') AS note
+          FROM thesis_claims
+         WHERE position_id = ? AND retired_on IS NULL
+         ORDER BY created_on DESC, claim_id DESC
+    """, [position_id]).df()
+    return [
+        claim_engine.Claim(metric=r.metric, comparator=r.comparator,
+                           threshold=float(r.threshold), note=r.note,
+                           claim_id=int(r.claim_id))
+        for r in frame.itertuples()
+    ]
+
+
+def retire_claim(con, claim_id: int) -> None:
+    """Stop testing a claim without deleting it: a belief you abandoned is
+    part of the record of your thinking, and the reason it was abandoned is
+    usually more interesting than the claim."""
+    con.execute("UPDATE thesis_claims SET retired_on = ? WHERE claim_id = ?",
+                [dt.date.today(), claim_id])
+
+
 # -------------------------------------------------------------- thesis health
 def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.DataFrame:
     """Score each open position GREEN / AMBER / RED against current evidence.
@@ -189,6 +247,7 @@ def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.D
     write connection raises -- which is why this stage had never once succeeded
     in the night, leaving thesis health to whatever last ran it by hand.
     """
+    from engine.portfolio import claims as claim_engine
     from engine.storage import db as analytics
 
     as_of = as_of or dt.date.today()
@@ -201,22 +260,36 @@ def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.D
     owns_analytics = analytics_con is None
     acon = analytics_con if analytics_con is not None else analytics.connect(read_only=True)
     try:
-        gates = acon.execute("""
-            SELECT s.ticker, g.gate_name, g.status, g.detail
-              FROM gate_results g JOIN securities s ON s.security_id = g.security_id
-             WHERE g.as_of_date = (SELECT max(as_of_date) FROM gate_results)
-        """).df()
-        bands = acon.execute("""
-            SELECT s.ticker, json_extract_string(sc.explain,'$.band') AS band
-              FROM scores sc JOIN securities s ON s.security_id = sc.security_id
-             WHERE sc.as_of_date = (SELECT max(as_of_date) FROM scores)
-        """).df()
+        rows, claim_rows = _review_positions(con, acon, positions, as_of, claim_engine)
     finally:
         if owns_analytics:
             acon.close()
 
+    frame = pd.DataFrame(rows)
+    _store_health(con, frame, claim_rows)
+    return frame
+
+
+def _review_positions(con, acon, positions, as_of, claim_engine):
+    """The review itself, with the analytics connection held open throughout.
+
+    Claims are measured per position, so the connection has to survive the loop
+    -- it used to be closed as soon as the gates and bands were read.
+    """
+    gates = acon.execute("""
+        SELECT s.ticker, g.gate_name, g.status, g.detail
+          FROM gate_results g JOIN securities s ON s.security_id = g.security_id
+         WHERE g.as_of_date = (SELECT max(as_of_date) FROM gate_results)
+    """).df()
+    bands = acon.execute("""
+        SELECT s.ticker, json_extract_string(sc.explain,'$.band') AS band
+          FROM scores sc JOIN securities s ON s.security_id = sc.security_id
+         WHERE sc.as_of_date = (SELECT max(as_of_date) FROM scores)
+    """).df()
+    acon_measure = acon
+
     band_of = dict(zip(bands.get("ticker", []), bands.get("band", [])))
-    rows = []
+    rows, claim_rows = [], []
     CRITICAL = {"surveillance", "cash_conversion", "serial_dilution", "sustained_losses"}
 
     for record in positions.itertuples():
@@ -240,6 +313,35 @@ def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.D
             health = "AMBER"
             reasons.append("No current screen for this company — cannot verify the thesis")
 
+        # YOUR reasons, not the generic ones. Everything above tests whether the
+        # company still looks acceptable; this tests whether the specific thing
+        # you believed is still happening, which is the failure that otherwise
+        # occurs in silence.
+        position_claims = claims_for(con, record.position_id)
+        checks = []
+        if position_claims:
+            measured = claim_engine.measure(acon_measure, record.ticker, as_of)
+            checks = claim_engine.check(position_claims, measured)
+            claim_health, claim_reasons = claim_engine.health_from_checks(checks)
+            reasons += claim_reasons
+            if claim_health == "RED":
+                health = "RED"
+            elif claim_health == "AMBER" and health == "GREEN":
+                health = "AMBER"
+
+            unmeasurable = [c for c in checks if c.status == claim_engine.UNCHECKABLE]
+            if unmeasurable and health == "GREEN":
+                reasons.append(
+                    f"{len(unmeasurable)} of {len(checks)} thesis claims cannot be "
+                    "checked from current data"
+                )
+        claim_rows.extend(
+            {"claim_id": c.claim.claim_id, "position_id": record.position_id,
+             "as_of_date": as_of, "status": c.status, "observed": c.observed,
+             "detail": c.detail[:500]}
+            for c in checks if c.claim.claim_id is not None
+        )
+
         rows.append({
             "position_id": record.position_id, "ticker": record.ticker,
             "as_of_date": as_of, "health": health,
@@ -248,7 +350,14 @@ def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.D
                        ("FLAGGED" if not failures.empty else "CLEARED"),
         })
 
-    frame = pd.DataFrame(rows)
+    return rows, claim_rows
+
+
+def _store_health(con, frame: pd.DataFrame, claim_rows: list[dict]) -> None:
+    """Persist the review and the per-claim checks behind it."""
+    if frame.empty:
+        return
+
     con.register("staged_health", frame)
     con.execute("""
         DELETE FROM thesis_health WHERE (position_id, as_of_date) IN
@@ -259,7 +368,22 @@ def review_thesis(con, as_of: dt.date | None = None, analytics_con=None) -> pd.D
         SELECT position_id, as_of_date, health, reasons, gem_band, verdict FROM staged_health
     """)
     con.unregister("staged_health")
-    return frame
+
+    if not claim_rows:
+        return
+    checks = pd.DataFrame(claim_rows)
+    con.register("staged_checks", checks)
+    con.execute("""
+        DELETE FROM thesis_claim_checks WHERE (claim_id, as_of_date) IN
+            (SELECT claim_id, as_of_date FROM staged_checks)
+    """)
+    con.execute("""
+        INSERT INTO thesis_claim_checks
+            (claim_id, position_id, as_of_date, status, observed, detail)
+        SELECT claim_id, position_id, as_of_date, status, observed, detail
+          FROM staged_checks
+    """)
+    con.unregister("staged_checks")
 
 
 # ------------------------------------------------------------------- planner

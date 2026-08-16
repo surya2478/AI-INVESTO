@@ -11,3 +11,18 @@ AI-Investo nightly run — 2026-08-15 21:45:49
 ==============================================================
 6/8 stages ok — FAILED: trends, thesis health
 
+AI-Investo nightly run — 2026-08-16 08:55:46
+==============================================================
+[ok  ] universe                  6.5s  2126 listings, 6 indices, 139 index levels, 156 ASM flags, 2 flow rows
+[ok  ] bse identity              0.7s  2027 securities matched to BSE scrip codes
+[ok  ] prices                  101.4s  6,927 bars from 2026-08-05 across 867 symbols
+[ok  ] filings recent          251.1s  2922 announcements 2026-07-28..2026-08-15, 1524 without a parseable period
+[ok  ] filings backfill        315.7s  3808 announcements, cursor now 2026-04-22, ~31 windows to 2024-10-01
+[ok  ] gates                    72.4s  210 rejected, 208 flagged, 51 unvetted, 293 cleared
+[ok  ] score                    18.4s  760 scored, mean coverage 79%
+[ok  ] thesis health             0.2s  amber 1 · green 1
+[ok  ] today payload             6.0s  14 themes as of 2026-08-16, 0 with India trailing
+[FAIL] publish snapshot          0.1s  PermissionError: [WinError 32] The process cannot access the file because it is being used by another process
+==============================================================
+9/10 stages ok — FAILED: publish snapshot
+

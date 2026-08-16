@@ -958,6 +958,59 @@ def folio_note(
         con.close()
 
 
+@folio_app.command("claim")
+def folio_claim(
+    # Optional so `--list` works on its own: someone reaching for this command
+    # usually does not yet know what the engine can measure.
+    ticker: str = typer.Argument("", help="Position to attach the claim to"),
+    metric: str = typer.Argument("", help="What to measure (see --list)"),
+    comparator: str = typer.Argument("", help="'>=' or '<='"),
+    threshold: float = typer.Argument(0.0, help="The number you are betting on"),
+    note: str = typer.Option("", "--note", help="Why this number, in your words"),
+    show: bool = typer.Option(False, "--list", help="List measurable metrics and exit"),
+) -> None:
+    """Record what would make this thesis WRONG.
+
+        investo folio claim WABAG order_book_to_sales '>=' 2.0 --note "AMRUT 2.0"
+
+    A thesis in prose cannot be checked, so nothing ever checked one. A claim is
+    one falsifiable assertion, tested against real data every night, and reported
+    as HOLDS, BROKEN or UNCHECKABLE -- the third distinct from the first, because
+    a claim nobody can measure is not a claim that passed.
+    """
+    from engine.portfolio import book, claims as claim_engine
+
+    if show:
+        table = Table(title="Measurable claim metrics")
+        table.add_column("metric", style="cyan")
+        table.add_column("unit", justify="center")
+        table.add_column("measures")
+        for name, (_fn, unit, label) in sorted(claim_engine.MEASURES.items()):
+            table.add_row(name, unit, label)
+        console.print(table)
+        console.print("[dim]investo folio claim WABAG order_book_to_sales '>=' 2.0[/dim]")
+        return
+
+    if not (ticker and metric and comparator):
+        console.print("[red]need ticker, metric and comparator[/red] — e.g. "
+                      "[dim]investo folio claim WABAG order_book_to_sales '>=' 2.0[/dim]\n"
+                      "Run with --list to see what the engine can measure.")
+        raise typer.Exit(1)
+
+    con = book.connect()
+    try:
+        book.add_claim(con, ticker, metric, comparator, threshold, note)
+        console.print(f"[green]claim recorded[/green] {ticker.upper()}: "
+                      f"{metric} {comparator} {threshold:g}")
+        console.print("[dim]Checked on every review. A broken claim moves the "
+                      "position off GREEN.[/dim]")
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+    finally:
+        con.close()
+
+
 # ------------------------------------------------------------------ coverage
 @app.command()
 def coverage() -> None:

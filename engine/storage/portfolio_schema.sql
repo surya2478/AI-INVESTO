@@ -75,3 +75,40 @@ CREATE TABLE IF NOT EXISTS folio_settings (
     key    VARCHAR PRIMARY KEY,
     value  VARCHAR
 );
+
+-- WHAT WOULD MAKE THIS WRONG.
+--
+-- A thesis written as prose cannot be checked, so nothing ever checked one.
+-- `review_thesis` tested gates and the score band -- generic quality signals,
+-- none of them the reason anybody actually bought. WABAG's thesis rests on a
+-- "policy-visible order book"; the engine has tracked order books all along and
+-- the two were never introduced. A reason can evaporate in silence.
+--
+-- A claim is one falsifiable assertion: a metric, a direction and a threshold.
+-- Recorded once, checked every night, and kept when retired rather than deleted,
+-- because a claim you stopped believing is part of the record of your thinking.
+CREATE SEQUENCE IF NOT EXISTS seq_claim_id START 1;
+
+CREATE TABLE IF NOT EXISTS thesis_claims (
+    claim_id     BIGINT PRIMARY KEY DEFAULT nextval('seq_claim_id'),
+    position_id  BIGINT NOT NULL,
+    metric       VARCHAR NOT NULL,        -- see claims.MEASURES
+    comparator   VARCHAR NOT NULL,        -- '>=' | '<='
+    threshold    DOUBLE  NOT NULL,
+    note         VARCHAR,                 -- why this number, in your words
+    created_on   DATE NOT NULL,
+    retired_on   DATE,                    -- NULL => still part of the thesis
+    UNIQUE (position_id, metric, created_on)
+);
+
+-- History, so "when did this stop being true" is answerable rather than only
+-- "is it true now".
+CREATE TABLE IF NOT EXISTS thesis_claim_checks (
+    claim_id     BIGINT NOT NULL,
+    position_id  BIGINT NOT NULL,
+    as_of_date   DATE NOT NULL,
+    status       VARCHAR NOT NULL,        -- HOLDS | BROKEN | UNCHECKABLE
+    observed     DOUBLE,
+    detail       VARCHAR,
+    PRIMARY KEY (claim_id, as_of_date)
+);
