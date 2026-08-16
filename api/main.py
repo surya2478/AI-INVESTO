@@ -52,10 +52,42 @@ def health() -> dict:
             SELECT count(*) FROM scores
              WHERE as_of_date = (SELECT max(as_of_date) FROM scores)
         """).fetchone()[0]
+        run = con.execute("""
+            SELECT run_id, min(started_at) AS started_at, count(*) AS stages,
+                   sum(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
+                   string_agg(CASE WHEN status = 'FAILED' THEN stage END, ', ') AS failed_stages
+              FROM pipeline_runs
+             WHERE run_id = (SELECT run_id FROM pipeline_runs
+                              ORDER BY started_at DESC LIMIT 1)
+             GROUP BY run_id
+        """).df()
     finally:
         con.close()
+
+    # A pipeline that can fail invisibly is one you have to remember to audit.
+    # Two stages failed on every run for an unknown period before this existed.
+    pipeline = {"ran": False}
+    if not run.empty:
+        row = run.iloc[0]
+        started = pd.Timestamp(row["started_at"])
+        pipeline = {
+            "ran": True,
+            "run_id": str(row["run_id"]),
+            "started_at": started.isoformat(timespec="seconds"),
+            "age_hours": round((pd.Timestamp.now() - started).total_seconds() / 3600, 1),
+            "stages": int(row["stages"]),
+            "failed": int(row["failed"] or 0),
+            "failed_stages": row["failed_stages"] or "",
+        }
+
+    stale_days = None
+    if last is not None:
+        stale_days = (dt.date.today() - pd.Timestamp(last).date()).days
+
     return {"status": "ok", "bars": int(bars), "latest_bar": str(last),
-            "scored": int(scored), "served_at": dt.datetime.now().isoformat(timespec="seconds")}
+            "data_age_days": stale_days, "scored": int(scored),
+            "pipeline": pipeline,
+            "served_at": dt.datetime.now().isoformat(timespec="seconds")}
 
 
 @app.get("/api/today")

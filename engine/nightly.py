@@ -75,18 +75,43 @@ class NightlyReport:
         return "\n".join(lines)
 
 
-def _stage(report: NightlyReport, name: str, fn) -> None:
+def _stage(report: NightlyReport, name: str, fn, con=None, run_id: str = "") -> None:
     """Run one stage, recording success or failure without propagating."""
     started = time.monotonic()
     try:
         detail = fn() or ""
-        report.stages.append(StageResult(name, "OK", str(detail), time.monotonic() - started))
+        result = StageResult(name, "OK", str(detail), time.monotonic() - started)
     except Exception as exc:  # noqa: BLE001 - a bad stage must not end the night
         log.exception("stage %s failed", name)
-        report.stages.append(StageResult(
-            name, "FAILED", f"{type(exc).__name__}: {exc}"[:140],
-            time.monotonic() - started,
-        ))
+        result = StageResult(name, "FAILED", f"{type(exc).__name__}: {exc}"[:140],
+                             time.monotonic() - started)
+    report.stages.append(result)
+    _record_stage(con, run_id, report.started, result)
+
+
+def _record_stage(con, run_id: str, started: dt.datetime, result: StageResult) -> None:
+    """Persist one stage outcome as it happens.
+
+    Written per stage rather than once at the end, so a run that dies halfway
+    still leaves a record of how far it got -- which is the case where knowing
+    matters most. Recording must never be the thing that breaks a night, so a
+    failure here is logged and swallowed.
+    """
+    if con is None or not run_id:
+        return
+    try:
+        con.execute("""
+            INSERT INTO pipeline_runs (run_id, started_at, stage, status, seconds, detail)
+            VALUES (?, ?, ?, ?, ?, ?)
+            -- now(), not current_timestamp: DuckDB binds the bare keyword in a
+            -- DO UPDATE SET as a column reference and fails on it.
+            ON CONFLICT (run_id, stage) DO UPDATE
+               SET status = excluded.status, seconds = excluded.seconds,
+                   detail = excluded.detail, recorded_at = now()
+        """, [run_id, started, result.name, result.status,
+              round(result.seconds, 1), str(result.detail)[:500]])
+    except Exception:  # noqa: BLE001
+        log.exception("could not record stage %s", result.name)
 
 
 # --------------------------------------------------------------- job cursors
@@ -310,25 +335,30 @@ def stage_snapshot(con) -> str:
 # ----------------------------------------------------------------- entrypoint
 def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
     report = NightlyReport(started=dt.datetime.now())
+    # One id per night, so the app can ask "how did the LAST run go" rather than
+    # reading a text file nobody opens.
+    run_id = f"{report.started:%Y%m%d-%H%M%S}"
     con = db.connect()
     try:
-        _stage(report, "universe", lambda: stage_universe(con))
-        _stage(report, "bse identity", lambda: stage_bse_identity(con))
+        _stage(report, "universe", lambda: stage_universe(con), con, run_id)
+        _stage(report, "bse identity", lambda: stage_bse_identity(con), con, run_id)
         if skip_prices:
-            report.stages.append(StageResult("prices", "SKIPPED", "disabled by flag"))
+            skipped = StageResult("prices", "SKIPPED", "disabled by flag")
+            report.stages.append(skipped)
+            _record_stage(con, run_id, report.started, skipped)
         else:
-            _stage(report, "prices", lambda: stage_prices(con))
-        _stage(report, "filings recent", lambda: stage_filings_recent(con))
-        _stage(report, "filings backfill", lambda: stage_filings_backfill(con, windows))
+            _stage(report, "prices", lambda: stage_prices(con), con, run_id)
+        _stage(report, "filings recent", lambda: stage_filings_recent(con), con, run_id)
+        _stage(report, "filings backfill", lambda: stage_filings_backfill(con, windows), con, run_id)
         # Order matters from here down: gates and scores are inputs to both the
         # thesis review and the payload, so anything that READS them has to run
         # after they are written. The payload build used to sit above the gates,
         # which is how the app came to serve last night's verdicts as today's.
-        _stage(report, "gates", lambda: stage_gates(con))
-        _stage(report, "score", lambda: stage_score(con))
-        _stage(report, "thesis health", lambda: stage_thesis_health(con))
-        _stage(report, "today payload", lambda: stage_payload(con))
-        _stage(report, "publish snapshot", lambda: stage_snapshot(con))
+        _stage(report, "gates", lambda: stage_gates(con), con, run_id)
+        _stage(report, "score", lambda: stage_score(con), con, run_id)
+        _stage(report, "thesis health", lambda: stage_thesis_health(con), con, run_id)
+        _stage(report, "today payload", lambda: stage_payload(con), con, run_id)
+        _stage(report, "publish snapshot", lambda: stage_snapshot(con), con, run_id)
     finally:
         con.close()
 

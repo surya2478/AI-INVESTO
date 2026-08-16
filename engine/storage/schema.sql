@@ -351,6 +351,29 @@ CREATE TABLE IF NOT EXISTS ingest_log (
     finished_at  TIMESTAMP
 );
 
+-- Did the night actually run, and did anything fail?
+--
+-- The nightly report went to reports/nightly.log and nowhere else, so nothing
+-- could display it and nobody read it. Two stages then failed on EVERY run for
+-- an unknown period -- the Today payload and thesis health, both on the same
+-- DuckDB connection rule -- and it surfaced only when the job was run by hand
+-- and the traceback read. A pipeline that can fail invisibly is one you have to
+-- remember to audit, which is the same as one you do not trust.
+--
+-- Written per stage as it completes, so a run that dies halfway still leaves a
+-- record of how far it got.
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    run_id      VARCHAR   NOT NULL,
+    started_at  TIMESTAMP NOT NULL,
+    stage       VARCHAR   NOT NULL,
+    status      VARCHAR   NOT NULL,        -- OK | FAILED | SKIPPED
+    seconds     DOUBLE,
+    detail      VARCHAR,
+    recorded_at TIMESTAMP DEFAULT current_timestamp,
+    PRIMARY KEY (run_id, stage)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_started  ON pipeline_runs (started_at);
 CREATE INDEX IF NOT EXISTS idx_ohlcv_date        ON ohlcv (date);
 CREATE INDEX IF NOT EXISTS idx_fund_sec_filing   ON fundamentals_pit (security_id, filing_date);
 CREATE INDEX IF NOT EXISTS idx_scores_date       ON scores (as_of_date);

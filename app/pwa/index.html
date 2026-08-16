@@ -104,6 +104,8 @@
   .stale{margin:0 20px 10px;padding:8px 11px;border-radius:4px;
     border:1px solid var(--warn);color:var(--warn);
     font-family:var(--mono);font-size:10px}
+  /* A healthy run states itself quietly; a failed one uses .stale and shouts. */
+  .runok{margin:0 20px 10px;font-family:var(--mono);font-size:10px;color:var(--muted)}
   section[hidden]{display:none}
 
   /* Company sheet — the analysis behind a name. Full screen rather than a modal
@@ -156,6 +158,7 @@
 </header>
 
 <div id="staleness"></div>
+<div id="pipeline"></div>
 
 <section id="view-today">
   <div class="band-label"><span>Market pulse</span></div>
@@ -576,6 +579,27 @@ fetch("/api/today").then(r => r.json()).then(render).catch(err => {
   document.getElementById("staleness").innerHTML =
     `<div class="stale">Offline, and no cached data yet. Start the API and reload.</div>`;
 });
+
+// Did the pipeline actually run, and did anything fail? Everything on every
+// screen assumes it did. Two stages failed on every run for an unknown period
+// and the only trace was a text file nobody opened, so the answer belongs where
+// you already look rather than in reports/nightly.log.
+fetch("/api/health").then(r => r.ok ? r.json() : null).then(h => {
+  const p = h && h.pipeline;
+  const el = document.getElementById("pipeline");
+  if (!el || !p) return;
+  if (!p.ran) {
+    el.innerHTML = `<div class="stale">The nightly job has never recorded a run.</div>`;
+    return;
+  }
+  const when = p.age_hours < 36
+    ? `${p.age_hours.toFixed(0)}h ago`
+    : `${Math.round(p.age_hours / 24)} days ago`;
+  el.innerHTML = p.failed > 0
+    ? `<div class="stale">Last run ${when}: ${p.failed} of ${p.stages} stages failed
+         — ${p.failed_stages}. The data below may be incomplete.</div>`
+    : `<div class="runok">Last run ${when} · ${p.stages}/${p.stages} stages ok</div>`;
+}).catch(() => {});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
