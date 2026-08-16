@@ -414,6 +414,27 @@ function loadFolio() {
         `<div class="card"><p>${d.note || "No positions yet."}</p></div>`;
       return;
     }
+    // Your reasons, each one tested. Three states, and the third is the point:
+    // a claim nobody can measure has not passed, and a position with no claims
+    // at all is a thesis nothing can disprove — which the screen has to say out
+    // loud, because it otherwise looks identical to one whose claims all hold.
+    const claimMark = { HOLDS: "✓", BROKEN: "✗", UNCHECKABLE: "—" };
+    const claimTone = { HOLDS: "var(--pos)", BROKEN: "var(--neg)", UNCHECKABLE: "var(--muted)" };
+    const claimBlock = p => {
+      if (!p.claims || !p.claims.length) {
+        return `<div class="bs" style="margin-top:8px;color:var(--warn)">
+          Thesis not falsifiable — no claims recorded.
+          <span style="color:var(--muted)">investo folio claim ${p.ticker.replace(".NS","")} --list</span></div>`;
+      }
+      return `<div style="margin-top:8px">` + p.claims.map(c => {
+        const status = c.status || "UNCHECKABLE";
+        const shown = c.observed == null ? "n/d" : (+c.observed).toFixed(2);
+        return `<div class="bs" style="color:${claimTone[status]}">
+          ${claimMark[status]} ${c.metric} ${c.comparator} ${(+c.threshold).toFixed(2)}
+          <span style="color:var(--muted)">· now ${shown}${c.note ? " · " + c.note : ""}</span></div>`;
+      }).join("") + `</div>`;
+    };
+
     const x = d.xray || {};
     document.getElementById("folio").innerHTML =
       pos.map(p => `
@@ -431,6 +452,7 @@ function loadFolio() {
                above it reports a 47.8% promoter pledge, and without a date the
                two read as equally current. -->
           <p style="margin-top:8px;font-size:11.5px;color:var(--muted)">${p.thesis || ""}</p>
+          ${claimBlock(p)}
           <div class="bs" style="margin-top:6px;color:${p.health_as_of == null || p.health_stale ? "var(--warn)" : "var(--muted)"}">
             ${p.opened_on ? "thesis written " + String(p.opened_on).slice(0,10) : ""}
             ${p.health_as_of == null

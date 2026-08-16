@@ -147,6 +147,36 @@ def test_a_claim_needs_an_open_position(folio):
         book.add_claim(folio, "NOTHELD", "roe", ">=", 15.0)
 
 
+def test_revising_a_claim_replaces_it_rather_than_failing(folio):
+    """Changing your mind about a threshold is normal, not a constraint error.
+
+    The uniqueness key includes created_on, so a same-day revision collided
+    outright until this was handled.
+    """
+    book.add_claim(folio, "WABAG", "order_book_to_sales", ">=", 2.0)
+    book.add_claim(folio, "WABAG", "order_book_to_sales", ">=", 3.0, note="raised the bar")
+    live = book.claims_for(folio, 1)
+    assert len(live) == 1
+    assert live[0].threshold == 3.0
+    assert live[0].note == "raised the bar"
+
+
+def test_a_retired_claim_can_be_recorded_again(folio):
+    """Retiring then reinstating on the same day must not hit the unique key."""
+    book.add_claim(folio, "WABAG", "roe", ">=", 12.0)
+    book.retire_claim(folio, book.claims_for(folio, 1)[0].claim_id)
+    assert book.claims_for(folio, 1) == []
+    book.add_claim(folio, "WABAG", "roe", ">=", 15.0)
+    live = book.claims_for(folio, 1)
+    assert len(live) == 1 and live[0].threshold == 15.0
+
+
+def test_claims_on_different_metrics_coexist(folio):
+    book.add_claim(folio, "WABAG", "roe", ">=", 12.0)
+    book.add_claim(folio, "WABAG", "debt_equity", "<=", 1.0)
+    assert len(book.claims_for(folio, 1)) == 2
+
+
 def test_retiring_a_claim_keeps_it_but_stops_testing_it(folio):
     book.add_claim(folio, "WABAG", "roe", ">=", 15.0)
     stored = book.claims_for(folio, 1)

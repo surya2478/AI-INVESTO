@@ -199,12 +199,29 @@ def add_claim(con, ticker: str, metric: str, comparator: str, threshold: float,
     if not row:
         raise ValueError(f"no open position for {ticker}")
 
+    # Recording a claim on a metric that already has one is a REVISION, not an
+    # error: you changed your mind about the threshold, which is the normal way
+    # a thesis evolves. The live claim is retired so the change is on the
+    # record, and any same-day entry is replaced outright -- the uniqueness key
+    # includes created_on, so without this a revision (or re-adding after
+    # retiring) fails with a constraint violation instead of doing the obvious
+    # thing.
+    today = dt.date.today()
+    position_id = int(row[0])
+    con.execute("""
+        UPDATE thesis_claims SET retired_on = ?
+         WHERE position_id = ? AND metric = ? AND retired_on IS NULL
+    """, [today, position_id, metric])
+    con.execute("""
+        DELETE FROM thesis_claims
+         WHERE position_id = ? AND metric = ? AND created_on = ?
+    """, [position_id, metric, today])
     con.execute("""
         INSERT INTO thesis_claims (position_id, metric, comparator, threshold,
                                    note, created_on)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, [row[0], metric, comparator, float(threshold), note or None, dt.date.today()])
-    return int(row[0])
+    """, [position_id, metric, comparator, float(threshold), note or None, today])
+    return position_id
 
 
 def claims_for(con, position_id: int) -> list:
@@ -223,6 +240,30 @@ def claims_for(con, position_id: int) -> list:
                            claim_id=int(r.claim_id))
         for r in frame.itertuples()
     ]
+
+
+def claim_status(con) -> pd.DataFrame:
+    """Every live claim with its most recent check.
+
+    Claims used to surface only when they BROKE, folded into the reasons string.
+    A thesis holding is evidence too -- WABAG's order book sitting at 5x revenue
+    is the reason the position exists, measured nightly and shown nowhere.
+    """
+    return con.execute("""
+        SELECT c.position_id, c.claim_id, c.metric, c.comparator, c.threshold,
+               coalesce(c.note, '') AS note,
+               k.status, k.observed, k.detail, k.as_of_date AS checked_on
+          FROM thesis_claims c
+          LEFT JOIN (
+            SELECT claim_id, status, observed, detail, as_of_date FROM (
+                SELECT *, row_number() OVER (PARTITION BY claim_id
+                                             ORDER BY as_of_date DESC) AS rn
+                  FROM thesis_claim_checks
+            ) WHERE rn = 1
+          ) k ON k.claim_id = c.claim_id
+         WHERE c.retired_on IS NULL
+         ORDER BY c.position_id, c.metric
+    """).df()
 
 
 def retire_claim(con, claim_id: int) -> None:

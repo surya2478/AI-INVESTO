@@ -842,6 +842,15 @@ def folio_open(
         for _, r in ladder.iterrows():
             table.add_row(str(int(r.stage)), f"{r.planned_pct:.0f}%", r.trigger)
         console.print(table)
+
+        # A thesis is required; a CHECKABLE thesis is not, and that is the gap
+        # this prompt exists to close. Prose cannot be tested, so without a
+        # claim nothing will ever tell you the reason stopped being true.
+        console.print(
+            f"\n[yellow]No claims yet — this thesis cannot be disproved.[/yellow]\n"
+            f"  [dim]investo folio claim {ticker.upper().removesuffix('.NS')} --list[/dim]"
+            "   to see what the engine can measure"
+        )
     finally:
         con.close()
 
@@ -901,6 +910,29 @@ def folio_status() -> None:
 
         for _, r in merged[merged.health.isin(["AMBER", "RED"])].iterrows():
             console.print(f"  [yellow]{r.ticker.replace('.NS','')}[/yellow]: {r.reasons}")
+
+        # Every claim, including the ones holding. A thesis still true is the
+        # evidence for staying in, and it was measured nightly and shown nowhere.
+        claims = book.claim_status(con)
+        # ASCII, deliberately: the Windows console encodes cp1252 by default and
+        # a tick character crashes the whole command with a UnicodeEncodeError.
+        # The PWA renders UTF-8 and uses proper marks there.
+        mark = {"HOLDS": "[green]holds [/green]", "BROKEN": "[red]BROKEN[/red]",
+                "UNCHECKABLE": "[dim]n/a   [/dim]"}
+        console.print("\n[bold]Thesis claims[/bold]")
+        for _, position in merged.iterrows():
+            name = position.ticker.replace(".NS", "")
+            mine = claims[claims.position_id == position.position_id] if not claims.empty \
+                else claims
+            if mine.empty:
+                console.print(f"  {name}: [yellow]not falsifiable[/yellow] — no claims. "
+                              f"[dim]investo folio claim {name} --list[/dim]")
+                continue
+            for _, c in mine.iterrows():
+                observed = "n/d" if pd.isna(c.observed) else f"{c.observed:,.2f}"
+                console.print(f"  {name}: {mark.get(c.status, '[dim]—[/dim]')} "
+                              f"{c.metric} {c.comparator} {c.threshold:g} "
+                              f"[dim]· now {observed}[/dim]")
 
         x = book.xray(con)
         console.print(f"\ninvested Rs {x['invested']:,.0f} · value Rs {x['value']:,.0f}"

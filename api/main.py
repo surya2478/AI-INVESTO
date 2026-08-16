@@ -229,11 +229,30 @@ def folio() -> dict:
                               .dt.strftime("%Y-%m-%d").where(merged[column].notna()))
 
         positions = json.loads(
-            merged[["ticker", "tier", "theme", "cost", "value", "pnl_pct",
-                    "weight_pct", "next_stage", "health", "reasons", "thesis",
-                    "opened_on", "health_as_of", "health_age_days", "health_stale"]]
+            merged[["position_id", "ticker", "tier", "theme", "cost", "value",
+                    "pnl_pct", "weight_pct", "next_stage", "health", "reasons",
+                    "thesis", "opened_on", "health_as_of", "health_age_days",
+                    "health_stale"]]
             .to_json(orient="records")
         )
+
+        # Claims travel WITH the position, holding ones included. A thesis that
+        # is still true is the evidence for staying in, and it was being
+        # measured nightly and shown nowhere.
+        claims = book.claim_status(con)
+        by_position: dict[int, list] = {}
+        if not claims.empty:
+            claims["observed"] = claims["observed"].astype(object).where(
+                claims["observed"].notna(), None)
+            for record in json.loads(claims.to_json(orient="records",
+                                                    date_format="iso")):
+                by_position.setdefault(record["position_id"], []).append(record)
+        for position in positions:
+            position["claims"] = by_position.get(position["position_id"], [])
+            # An empty list is not the same as claims that all hold, and the
+            # screen has to be able to tell them apart.
+            position["falsifiable"] = bool(position["claims"])
+
         return {"positions": positions, "xray": book.xray(con),
                 "health_max_age_days": book.HEALTH_MAX_AGE_DAYS,
                 "disclaimer": "Your record, not advice."}
