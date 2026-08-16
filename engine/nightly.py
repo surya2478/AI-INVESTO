@@ -319,12 +319,17 @@ def stage_gates(con) -> str:
             f"{counts.get('UNVETTED', 0)} unvetted, {counts.get('CLEARED', 0)} cleared")
 
 
-def stage_snapshot(con) -> str:
-    """Publish the copy the app reads, last, once the night is consistent.
+def stage_snapshot() -> str:
+    """Publish the copy the app reads, once the night is consistent.
 
     Until this existed the API read the live database, so every data endpoint
     returned 500 for the whole run -- twenty minutes to an hour of the app being
     down each night, which is exactly when nobody is watching it.
+
+    RUNS AFTER THE CONNECTION CLOSES. It copies the database FILE, and Windows
+    will not let a file be read while DuckDB holds it open for writing: the first
+    unattended run failed here with WinError 32. That is also the only moment the
+    file is genuinely complete, so the constraint and the correct design agree.
     """
     path = db.publish_snapshot()
     if path is None:
@@ -358,9 +363,20 @@ def run(windows: int = 3, skip_prices: bool = False) -> NightlyReport:
         _stage(report, "score", lambda: stage_score(con), con, run_id)
         _stage(report, "thesis health", lambda: stage_thesis_health(con), con, run_id)
         _stage(report, "today payload", lambda: stage_payload(con), con, run_id)
-        _stage(report, "publish snapshot", lambda: stage_snapshot(con), con, run_id)
     finally:
         con.close()
+
+    # Snapshot last and outside the connection, for the reason in stage_snapshot.
+    _stage(report, "publish snapshot", stage_snapshot)
+
+    # Record that stage and refresh the copy, so the snapshot the app reads
+    # contains its own result rather than stopping one row short.
+    recorder = db.connect()
+    try:
+        _record_stage(recorder, run_id, report.started, report.stages[-1])
+    finally:
+        recorder.close()
+    db.publish_snapshot()
 
     settings.REPORT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = settings.REPORT_DIR / "nightly.log"
